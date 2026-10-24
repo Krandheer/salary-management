@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+
+/* Light theme only: keep dark: utilities inert (no .dark class is ever applied). */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.25rem;
+  --background: #f6f7f8;
+  --foreground: #1b2229;
+  --card: #ffffff;
+  --card-foreground: #1b2229;
+  --popover: #ffffff;
+  --popover-foreground: #1b2229;
+  --primary: #0b6e6e;
+  --primary-foreground: #ffffff;
+  --secondary: #eceef0;
+  --secondary-foreground: #1b2229;
+  --muted: #eceef0;
+  --muted-foreground: #55606b;
+  --accent: #e6f4f3;
+  --accent-foreground: #074848;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #d9dee3;
+  --input: #d9dee3;
+  --ring: #0b6e6e;
+
+  --status-active-bg: #e3f4e8;
+  --status-active-fg: #14632e;
+  --status-inactive-bg: #eceef0;
+  --status-inactive-fg: #454f59;
+  --import-create-bg: #e4effb;
+  --import-create-fg: #124c8f;
+  --import-update-bg: #fff1d6;
+  --import-update-fg: #7a4b00;
+  --import-unchanged-bg: #eceef0;
+  --import-unchanged-fg: #454f59;
+  --import-error-bg: #fde7e7;
+  --import-error-fg: #9b1c1c;
+}
+
+@theme inline {
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-status-active-bg: var(--status-active-bg);
+  --color-status-active-fg: var(--status-active-fg);
+  --color-status-inactive-bg: var(--status-inactive-bg);
+  --color-status-inactive-fg: var(--status-inactive-fg);
+  --color-import-create-bg: var(--import-create-bg);
+  --color-import-create-fg: var(--import-create-fg);
+  --color-import-update-bg: var(--import-update-bg);
+  --color-import-update-fg: var(--import-update-fg);
+  --color-import-unchanged-bg: var(--import-unchanged-bg);
+  --color-import-unchanged-fg: var(--import-unchanged-fg);
+  --color-import-error-bg: var(--import-error-bg);
+  --color-import-error-fg: var(--import-error-fg);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-sm;
+  }
+  td,
+  input,
+  .stat {
+    font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}
