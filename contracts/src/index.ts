@@ -177,3 +177,34 @@ export interface CountryJobTitleInsights {
   currency: CurrencyCode;
   jobTitles: JobTitleInsight[];
 }
+
+/** One country's active employees, with the mean current salary converted to whole US dollars. */
+export interface CountryUsdComparison {
+  country: CountryCode;
+  countryName: string;
+  headcount: number;
+  averageSalaryUsd: number;
+}
+
+/** One department across all countries, with the mean current salary converted to whole US dollars. */
+export interface DepartmentUsdComparison {
+  department: string;
+  headcount: number;
+  averageSalaryUsd: number;
+}
+
+/**
+ * Current salaries of active employees in US dollars, at the fixed reference rates.
+ * Converted figures are approximate; groups with no active employees are omitted.
+ */
+export interface OrganisationComparison {
+  referenceCurrency: 'USD';
+  ratesAsOf: IsoDate;
+  ratesSource: string;
+  /** US dollars per one unit of each currency. */
+  toUsd: Record<CurrencyCode, number>;
+  /** Ordered by country name A to Z. */
+  byCountry: CountryUsdComparison[];
+  /** Ordered A to Z. */
+  byDepartment: DepartmentUsdComparison[];
+}
