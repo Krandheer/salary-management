@@ -80,6 +80,7 @@ export interface EditableState {
   fields: EmployeeFields;
   status: EmployeeStatus;
   earliestSalaryDate: IsoDate;
+  currentSalaryDate: IsoDate;
 }
 
 export interface SalaryEntryInput {
@@ -102,21 +103,15 @@ function toEmployeeFields(employee: EmployeeRow, currentSalary: number): Employe
   };
 }
 
-/** Of two inactive records with one email, the later exit wins; on a tie, the later record. */
-function isLaterExit(candidate: ExistingEmployee, current: ExistingEmployee | null): boolean {
-  if (current === null) return true;
-  const [candidateExit, currentExit] = [candidate.exitDate ?? '', current.exitDate ?? ''];
-  return candidateExit === currentExit ? candidate.id > current.id : candidateExit > currentExit;
-}
-
+/** Records must arrive most recent exit first, so each email's inactive list keeps that order. */
 function addToSnapshot(
   snapshot: ImportSnapshot,
   status: EmployeeStatus,
   existing: ExistingEmployee,
 ): void {
-  const match = snapshot.get(existing.fields.email) ?? { active: null, latestInactive: null };
+  const match = snapshot.get(existing.fields.email) ?? { active: null, inactive: [] };
   if (status === 'active') match.active = existing;
-  else if (isLaterExit(existing, match.latestInactive)) match.latestInactive = existing;
+  else match.inactive.push(existing);
   snapshot.set(existing.fields.email, match);
 }
 
@@ -315,6 +310,7 @@ export class EmployeeRepository {
       .select({
         employee: employees,
         currentSalary: currentSalaries.amount,
+        currentSalaryDate: currentSalaries.effectiveDate,
         earliestSalaryDate: min(salaryHistory.effectiveDate),
       })
       .from(employees)
@@ -327,13 +323,15 @@ export class EmployeeRepository {
     return {
       status: row.employee.status,
       earliestSalaryDate: row.earliestSalaryDate,
+      currentSalaryDate: row.currentSalaryDate,
       fields: toEmployeeFields(row.employee, row.currentSalary),
     };
   }
 
   /**
-   * Every stored employee by email, in one query: the active record, and the inactive record
-   * with the latest exit date. Each carries its current salary and earliest salary date.
+   * Every stored employee by email, in one query: the active record, and every inactive record,
+   * most recent exit first (on a tie, the later record). Each carries its current salary and
+   * earliest salary date.
    */
   loadImportSnapshot(): ImportSnapshot {
     const rows = this.db
@@ -347,6 +345,7 @@ export class EmployeeRepository {
       .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
       .innerJoin(salaryHistory, eq(salaryHistory.employeeId, employees.id))
       .groupBy(employees.id)
+      .orderBy(desc(employees.exitDate), desc(employees.id))
       .all();
     const snapshot: ImportSnapshot = new Map();
     for (const row of rows) {

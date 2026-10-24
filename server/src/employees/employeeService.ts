@@ -45,6 +45,11 @@ function isNewHistoryEntryNeeded(
   return change.amount !== stored.annualSalary || updated.countryCode !== stored.countryCode;
 }
 
+/** The rehire rule depends on the hire date and on which earlier records share the email. */
+function isRehireRuleAffected(stored: EmployeeFields, updated: EmployeeFields): boolean {
+  return updated.hireDate !== stored.hireDate || updated.email !== stored.email;
+}
+
 export class EmployeeService {
   constructor(
     private readonly repository: EmployeeRepository,
@@ -103,12 +108,14 @@ export class EmployeeService {
     const validation = validateEmployeeUpdate(state.fields, patch, {
       today: this.clock.today(),
       earliestSalaryDate: state.earliestSalaryDate,
+      currentSalaryDate: state.currentSalaryDate,
     });
     if (!validation.ok) throw new ValidationError(validation.fieldErrors);
     const { fields, salaryChange } = validation;
     if (this.repository.findActiveIdByEmailExcluding(fields.email, id) !== null) {
       throw new EmailTakenError();
     }
+    if (isRehireRuleAffected(state.fields, fields)) this.checkRehireHireDate(fields);
     this.repository.updateEmployeeFields(id, fields);
     if (salaryChange && isNewHistoryEntryNeeded(state.fields, fields, salaryChange)) {
       const entry = { ...salaryChange, currency: currencyFor(fields.countryCode) };
@@ -125,6 +132,7 @@ export class EmployeeService {
     this.repository.deactivate(id, chosenDate as IsoDate);
   }
 
+  /** Only inactive records count, so an edited (always active) employee is never judged against itself. */
   private checkRehireHireDate(fields: EmployeeFields): void {
     const [latest] = this.repository.findInactiveByEmail(fields.email);
     const error = validateRehireHireDate(fields.hireDate, latest?.exitDate ?? null);

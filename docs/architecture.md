@@ -114,7 +114,7 @@ sequenceDiagram
     end
 ```
 
-Rows are matched to existing employees by email. A row becomes **create** (new email, or a rehire of an inactive record), **update** (a field or salary differs), **unchanged**, or **error** (per-row messages naming the column). The classifier never emits an update for an inactive record.
+Rows are matched to existing employees by email. A row identical to any stored record with that email (active or inactive) is **unchanged**, so exports re-import cleanly even when a person left and came back. Otherwise a row becomes **create** (new email, or a rehire of an inactive record), **update** (a field or salary of the active employee differs), or **error** (per-row messages naming the column). The classifier never emits an update for an inactive record, and the rehire hire-date rule applies to updates as well as creates.
 
 ## Key decisions and trade-offs
 
@@ -128,6 +128,7 @@ Rows are matched to existing employees by email. A row becomes **create** (new e
 | **Stateless re-upload import** | No server-side session, temp storage or expiring tokens. Confirm re-validates the file against the data as it is now, so a stale preview can never be applied blindly. | The file is uploaded and parsed twice (about 1 s each at 10,000 rows). |
 | **All-or-nothing transaction** | An import that half-applies is worse than one that fails. A single `db.transaction`; any error row or failed write rolls everything back. The rollback test uses a real SQLite trigger, not a mock. | A whole file is rejected for a single bad row. HR fixes the row and retries. |
 | **Zip-bomb guard** (`zipSizeGuard.ts`) | An `.xlsx` is a zip. Upload is capped at 10 MB, but a small file can inflate enormously. Before exceljs loads it, the central directory is read and each entry is streamed with a byte counter; over 100 MB uncompressed is rejected. Declared sizes cannot be trusted (jszip reads them as signed 32-bit), hence the streamed count. A 20,000-row workbook inflates to about 9.4 MB. | About 50 ms extra per upload; relies on jszip internals for the fast declared-size sum. |
+| **An email on two rows of one file is an error** | Matching is by email, so two rows for one email are ambiguous; every such row is rejected. | Known limitation: an inactive export of someone who left twice holds two rows with their email, so it can't be re-imported unchanged; remove one row first. |
 | **Row and file caps** | 10 MB file, 20,000 data rows, strict header order. Rejected before row parsing. | Larger loads need splitting. |
 | **Perf suite separate from the unit suite** | The brief asks for fast, deterministic unit tests; timing tests seeding 10,000 rows are neither. `npm test` stays in seconds; `npm run test:perf` runs the timing tests with explicit budgets. | Perf regressions are caught only when that command is run (CI runs lint, typecheck and `npm test`). |
 | **TypeScript 6, not 7** | `typescript-eslint` 8.72 supports TypeScript below 6.1, so TS 7 would break linting. | Stay on 6.0.x until the lint tooling catches up. |

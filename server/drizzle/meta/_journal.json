@@ -15,6 +15,13 @@
       "when": 1792842457282,
       "tag": "0001_current_salaries_view",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792850457776,
+      "tag": "0002_current_salaries_effective_date",
+      "breakpoints": true
     }
   ]
 }

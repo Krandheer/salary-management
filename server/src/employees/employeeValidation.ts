@@ -261,28 +261,57 @@ export function validateSalaryChange(
   };
 }
 
+/** The stored facts the edit-only rules judge against. */
+interface EditContext {
+  earliestSalaryDate: IsoDate;
+  currentSalaryDate: IsoDate;
+}
+
+/**
+ * A change dated before the current salary would not become current, leaving the current
+ * salary in the old country's currency; so a country change must start on or after it.
+ */
+function validateCountryChangeDate(
+  effectiveDate: IsoDate,
+  currentSalaryDate: IsoDate,
+): string | null {
+  if (effectiveDate >= currentSalaryDate) return null;
+  return `When the country changes, the effective date can't be before the current salary's (${currentSalaryDate})`;
+}
+
+function collectCountryChangeErrors(
+  salaryChange: SalaryChangeValidation | null,
+  context: EditContext,
+): FieldErrors {
+  if (salaryChange === null) {
+    return { [SALARY_CHANGE_AMOUNT]: 'Enter a new salary when the country changes' };
+  }
+  if (!salaryChange.ok) return {};
+  const dateError = validateCountryChangeDate(
+    salaryChange.change.effectiveDate,
+    context.currentSalaryDate,
+  );
+  return dateError ? { [SALARY_CHANGE_DATE]: dateError } : {};
+}
+
 function collectEditOnlyErrors(
   current: EmployeeFields,
   merged: Record<string, unknown>,
   fieldErrors: FieldErrors,
-  isSalaryProposed: boolean,
-  context: { earliestSalaryDate: IsoDate },
+  salaryChange: SalaryChangeValidation | null,
+  context: EditContext,
 ): FieldErrors {
-  const errors: FieldErrors = {};
-  if (
-    !isSalaryProposed &&
-    !fieldErrors.country &&
-    asTrimmedText(merged.country) !== current.countryCode
-  ) {
-    errors[SALARY_CHANGE_AMOUNT] = 'Enter a new salary when the country changes';
-  }
+  const isCountryChanged =
+    !fieldErrors.country && asTrimmedText(merged.country) !== current.countryCode;
   const hireDate = merged.hireDate;
   const historyError =
     !fieldErrors.hireDate && typeof hireDate === 'string'
       ? validateHireDateAgainstHistory(hireDate, context.earliestSalaryDate)
       : null;
-  if (historyError) errors.hireDate = historyError;
-  return errors;
+  return {
+    ...(isCountryChanged ? collectCountryChangeErrors(salaryChange, context) : {}),
+    ...(historyError ? { hireDate: historyError } : {}),
+  };
 }
 
 /** The stored salary is not re-judged on an edit, so its error (if any) is not reported. */
@@ -294,14 +323,15 @@ function withoutStoredSalaryError(fieldErrors: FieldErrors): FieldErrors {
 
 /**
  * Merges the patch onto the stored employee and re-applies the shared field rules, plus the
- * edit-only rules: a country change needs a new salary, and the hire date cannot move past
- * the earliest salary history entry. The salary change is judged by `validateSalaryChange`
- * against the hire date and country being saved; the stored salary is never re-judged.
+ * edit-only rules: a country change needs a new salary dated no earlier than the current
+ * salary, and the hire date cannot move past the earliest salary history entry. The salary
+ * change is judged by `validateSalaryChange` against the hire date and country being saved;
+ * the stored salary is never re-judged.
  */
 export function validateEmployeeUpdate(
   current: EmployeeFields,
   patch: Record<string, unknown>,
-  context: { today: IsoDate; earliestSalaryDate: IsoDate },
+  context: EditContext & { today: IsoDate },
 ): EmployeeUpdateValidation {
   const merged = { ...currentAsInput(current), ...pickEditableFields(patch) };
   const isSalaryProposed = patch.salaryChange !== undefined && patch.salaryChange !== null;
@@ -321,7 +351,7 @@ export function validateEmployeeUpdate(
   const fieldErrors = {
     ...fieldRuleErrors,
     ...(salaryChange?.ok === false ? salaryChange.fieldErrors : {}),
-    ...collectEditOnlyErrors(current, merged, fieldRuleErrors, isSalaryProposed, context),
+    ...collectEditOnlyErrors(current, merged, fieldRuleErrors, salaryChange, context),
   };
 
   if (!validation.ok || Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };

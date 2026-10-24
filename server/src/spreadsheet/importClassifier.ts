@@ -29,7 +29,8 @@ export interface ExistingEmployee {
 
 export interface ImportMatch {
   active: ExistingEmployee | null;
-  latestInactive: ExistingEmployee | null;
+  /** Every inactive record with the email, most recent exit first. */
+  inactive: ExistingEmployee[];
 }
 
 /** The stored employees by lower-cased email. */
@@ -127,22 +128,34 @@ function plannedSalaryChange(active: ExistingEmployee, incoming: EmployeeFields)
   return { amount: incoming.annualSalary, currency: currencyFor(incoming.countryCode) };
 }
 
+/** A changed hire date must still come after the exit date of the person's latest earlier record. */
+function hireDateProblems(
+  incoming: EmployeeFields,
+  active: ExistingEmployee,
+  latestInactive: ExistingEmployee | null,
+): string[] {
+  const isHireDateChanged = incoming.hireDate !== active.fields.hireDate;
+  const problems = [
+    validateHireDateAgainstHistory(incoming.hireDate, active.earliestSalaryDate),
+    isHireDateChanged
+      ? validateRehireHireDate(incoming.hireDate, latestInactive?.exitDate ?? null)
+      : null,
+  ];
+  return problems.flatMap((problem) => (problem ? [columnMessage('hireDate', problem)] : []));
+}
+
 function classifyAgainstActive(
   row: ParsedImportRow,
   incoming: EmployeeFields,
   active: ExistingEmployee,
+  latestInactive: ExistingEmployee | null,
 ): RowClassification {
-  const changes = diffFields(active, incoming);
-  if (changes.length === 0) return UNCHANGED;
-  const hireDateProblem = validateHireDateAgainstHistory(
-    incoming.hireDate,
-    active.earliestSalaryDate,
-  );
-  if (hireDateProblem) return anError(row, [columnMessage('hireDate', hireDateProblem)]);
+  const problems = hireDateProblems(incoming, active, latestInactive);
+  if (problems.length > 0) return anError(row, problems);
   const email = active.fields.email;
   return {
     kind: 'update',
-    update: { row: row.rowNumber, email, changes },
+    update: { row: row.rowNumber, email, changes: diffFields(active, incoming) },
     operation: {
       kind: 'update',
       employeeId: active.id,
@@ -152,13 +165,12 @@ function classifyAgainstActive(
   };
 }
 
-/** Inactive records are never changed: a row is either identical, a rehire, or an error. */
+/** Inactive records are never changed: a row that differs is either a rehire or an error. */
 function classifyAgainstInactive(
   row: ParsedImportRow,
   incoming: EmployeeFields,
   inactive: ExistingEmployee,
 ): RowClassification {
-  if (diffFields(inactive, incoming).length === 0) return UNCHANGED;
   if (validateRehireHireDate(incoming.hireDate, inactive.exitDate) === null) {
     return aCreate(row.rowNumber, incoming, inactive.id);
   }
@@ -166,6 +178,15 @@ function classifyAgainstInactive(
     `Employee #${inactive.id} is inactive and can't be changed; ` +
     `a rehire needs a hire date after their exit date (${inactive.exitDate})`;
   return anError(row, [columnMessage('email', explanation)]);
+}
+
+/**
+ * A row equal to any stored record with its email changes nothing, so an export of active or
+ * inactive employees re-imports cleanly even when a person left and came back.
+ */
+function isIdenticalToAnyRecord(match: ImportMatch, incoming: EmployeeFields): boolean {
+  const records = match.active ? [match.active, ...match.inactive] : match.inactive;
+  return records.some((record) => diffFields(record, incoming).length === 0);
 }
 
 function classifyRow(
@@ -180,8 +201,11 @@ function classifyRow(
   }
   const incoming = row.outcome.fields;
   const match = existing.get(normalizeKey(incoming.email));
-  if (match?.active) return classifyAgainstActive(row, incoming, match.active);
-  if (match?.latestInactive) return classifyAgainstInactive(row, incoming, match.latestInactive);
+  if (!match) return aCreate(row.rowNumber, incoming, null);
+  if (isIdenticalToAnyRecord(match, incoming)) return UNCHANGED;
+  const latestInactive = match.inactive[0] ?? null;
+  if (match.active) return classifyAgainstActive(row, incoming, match.active, latestInactive);
+  if (latestInactive) return classifyAgainstInactive(row, incoming, latestInactive);
   return aCreate(row.rowNumber, incoming, null);
 }
 
@@ -205,7 +229,8 @@ function assemblePlan(classifications: readonly RowClassification[]): ImportPlan
 
 /**
  * Decides what importing each row would do, against a snapshot of the stored employees.
- * Rows match active employees by email; a row whose email is on more than one row is an error.
+ * A row equal to any stored record with its email is unchanged; otherwise it matches the active
+ * employee by email, else the most recent inactive one. An email on more than one row is an error.
  */
 export function classifyImportRows(
   rows: readonly ParsedImportRow[],
