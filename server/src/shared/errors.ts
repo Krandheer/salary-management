@@ -1,4 +1,6 @@
-export type FieldErrors = Record<string, string>;
+import type { FieldErrors } from '@acme/contracts';
+
+export type { FieldErrors };
 
 export type ImportFileErrorCode =
   'INVALID_FILE' | 'FILE_TOO_LARGE' | 'TOO_MANY_ROWS' | 'NO_DATA_ROWS' | 'HEADER_MISMATCH';

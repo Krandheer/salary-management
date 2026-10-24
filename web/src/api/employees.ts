@@ -1,5 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { EmployeeListPage, EmployeeListParams, JobTitleOptions } from '@acme/contracts';
+import type {
+  CreateEmployeeRequest,
+  EmployeeDetail,
+  EmployeeListPage,
+  EmployeeListParams,
+  JobTitleOptions,
+} from '@acme/contracts';
 import { buildQueryString, requestJson } from './http';
 import { queryKeys } from './queryKeys';
 
@@ -33,4 +39,20 @@ export function useJobTitleOptions(params: JobTitleOptionsParams) {
     queryFn: () => fetchJobTitleOptions(params),
     placeholderData: keepPreviousData,
   });
+}
+
+export function createEmployee(request: CreateEmployeeRequest): Promise<EmployeeDetail> {
+  return requestJson<EmployeeDetail>('/api/employees', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+}
+
+export function fetchEmployee(id: number): Promise<EmployeeDetail> {
+  return requestJson<EmployeeDetail>(`/api/employees/${id}`);
+}
+
+export function useEmployee(id: number) {
+  return useQuery({ queryKey: queryKeys.employees.detail(id), queryFn: () => fetchEmployee(id) });
 }

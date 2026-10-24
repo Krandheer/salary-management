@@ -9,7 +9,8 @@ import { errorHandler, notFoundHandler } from './shared/errorHandler.ts';
 
 export function createApp({ db, clock }: { db: AppDatabase; clock: Clock }): Express {
   const app = express();
-  const employeeService = new EmployeeService(new EmployeeRepository(db));
+  const employeeService = new EmployeeService(new EmployeeRepository(db), clock);
+  app.use(express.json());
   app.use(referenceRouter(clock));
   app.use(employeeRouter(employeeService));
   app.use('/api', notFoundHandler);

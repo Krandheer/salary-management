@@ -96,18 +96,18 @@ Seeded database, then the API, then a paginated list in the UI.
 
 ## Slice 3: Add an employee
 
--   [ ] HR Manager can add an employee by filling in every required field, and the new employee then appears in the list.
--   [ ] The new employee's salary is recorded as their first salary history entry, effective on the hire date, with the reason "Starting salary".
--   [ ] Choosing a country fills in the currency shown next to the salary field, and the HR Manager cannot edit it.
--   [ ] Shows an error next to each required field left empty.
--   [ ] A full name or job title made only of spaces counts as empty and shows the required-field error.
--   [ ] Surrounding spaces in the full name, work email and job title are removed before saving.
--   [ ] Shows an error when the work email is not in the `local@domain.tld` form.
--   [ ] Shows an error when the work email already belongs to an active employee, ignoring letter case.
--   [ ] Shows an error when the salary is not a whole number greater than zero.
--   [ ] Shows an error when the salary is above the chosen country's maximum.
--   [ ] Shows an error when the hire date is in the future or before 1950-01-01.
--   [ ] No employee is saved when any field is invalid.
+-   [x] HR Manager can add an employee by filling in every required field, and the new employee then appears in the list.
+-   [x] The new employee's salary is recorded as their first salary history entry, effective on the hire date, with the reason "Starting salary".
+-   [x] Choosing a country fills in the currency shown next to the salary field, and the HR Manager cannot edit it.
+-   [x] Shows an error next to each required field left empty.
+-   [x] A full name or job title made only of spaces counts as empty and shows the required-field error.
+-   [x] Surrounding spaces in the full name, work email and job title are removed before saving.
+-   [x] Shows an error when the work email is not in the `local@domain.tld` form.
+-   [x] Shows an error when the work email already belongs to an active employee, ignoring letter case.
+-   [x] Shows an error when the salary is not a whole number greater than zero.
+-   [x] Shows an error when the salary is above the chosen country's maximum.
+-   [x] Shows an error when the hire date is in the future or before 1950-01-01.
+-   [x] No employee is saved when any field is invalid.
 
 ## Slice 4: Edit an employee / update salary
 

@@ -1,14 +1,24 @@
-import { and, asc, count, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type {
   CountryCode,
   CurrencyCode,
+  EmployeeDetail,
   EmployeeListPage,
   EmployeeStatus,
   EmployeeSummary,
+  SalaryHistoryEntry,
 } from '@acme/contracts';
 import type { AppDatabase } from '../db/database.ts';
-import { currentSalaries, employees } from '../db/schema.ts';
+import { currentSalaries, employees, salaryHistory } from '../db/schema.ts';
+import { currencyFor } from '../reference/referenceData.ts';
+import { normalizeKey } from '../shared/text.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
+import type { EmployeeFields } from './employeeValidation.ts';
+
+export const STARTING_SALARY_REASON = 'Starting salary';
+
+/** The current salary is the first row in this order; the `current_salaries` view uses the same rule. */
+export const SALARY_HISTORY_ORDER = [desc(salaryHistory.effectiveDate), desc(salaryHistory.id)];
 
 interface EmployeeSummaryRow {
   id: number;
@@ -91,6 +101,93 @@ export class EmployeeRepository {
       .from(employees)
       .where(buildFilterConditions({ ...filters, jobTitleKey: null }))
       .all();
+  }
+
+  /** The id of the active employee with this email (already lower-cased), if any. */
+  findActiveIdByEmail(email: string): number | null {
+    const row = this.db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(and(eq(employees.email, normalizeKey(email)), eq(employees.status, 'active')))
+      .get();
+    return row?.id ?? null;
+  }
+
+  /** Inserts an active employee with a first salary history entry; returns the new id. */
+  insertEmployee(fields: EmployeeFields, recordedAt: string): number {
+    return this.db.transaction(() => {
+      const { id } = this.db
+        .insert(employees)
+        .values({
+          fullName: fields.fullName,
+          nameKey: normalizeKey(fields.fullName),
+          email: fields.email,
+          jobTitle: fields.jobTitle,
+          jobTitleKey: normalizeKey(fields.jobTitle),
+          department: fields.department,
+          countryCode: fields.countryCode,
+          employmentType: fields.employmentType,
+          hireDate: fields.hireDate,
+          status: 'active',
+          exitDate: null,
+          createdAt: recordedAt,
+        })
+        .returning({ id: employees.id })
+        .get();
+      this.db
+        .insert(salaryHistory)
+        .values({
+          employeeId: id,
+          amount: fields.annualSalary,
+          currency: currencyFor(fields.countryCode),
+          effectiveDate: fields.hireDate,
+          reason: STARTING_SALARY_REASON,
+          recordedAt,
+        })
+        .run();
+      return id;
+    });
+  }
+
+  getDetail(id: number): EmployeeDetail | null {
+    const row = this.db
+      .select({
+        id: employees.id,
+        fullName: employees.fullName,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        countryCode: employees.countryCode,
+        employmentType: employees.employmentType,
+        hireDate: employees.hireDate,
+        status: employees.status,
+        exitDate: employees.exitDate,
+        currentSalary: currentSalaries.amount,
+        currency: currentSalaries.currency,
+      })
+      .from(employees)
+      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
+      .where(eq(employees.id, id))
+      .get();
+    if (!row) return null;
+    return {
+      ...toEmployeeSummary(row),
+      email: row.email,
+      employmentType: row.employmentType,
+      hireDate: row.hireDate,
+      salaryHistory: this.listSalaryHistory(id),
+      linkedEmployments: [],
+    };
+  }
+
+  private listSalaryHistory(employeeId: number): SalaryHistoryEntry[] {
+    return this.db
+      .select()
+      .from(salaryHistory)
+      .where(eq(salaryHistory.employeeId, employeeId))
+      .orderBy(...SALARY_HISTORY_ORDER)
+      .all()
+      .map((entry) => ({ ...entry, currency: entry.currency as CurrencyCode }));
   }
 
   private countEmployees(condition: SQL | undefined): number {

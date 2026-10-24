@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useEmployeePage, useJobTitleOptions, type EmployeeListParams } from '@/api/employees';
 import { useReference } from '@/api/reference';
+import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/StateViews';
 import { useDebouncedValue } from '@/shared/useDebouncedValue';
 import { EmployeeFilters, NO_FILTERS, type EmployeeFiltersValue } from './EmployeeFilters';
@@ -49,7 +51,12 @@ export function EmployeeListPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Employees</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Employees</h1>
+        <Button asChild>
+          <Link to="/employees/new">Add employee</Link>
+        </Button>
+      </div>
       {reference.data && (
         <EmployeeFilters
           value={filters}
