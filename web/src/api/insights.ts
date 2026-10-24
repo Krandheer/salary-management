@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import type { CountryCode, CountryInsights, CountryJobTitleInsights } from '@acme/contracts';
+import type {
+  CountryCode,
+  CountryInsights,
+  CountryJobTitleInsights,
+  OrganisationComparison,
+} from '@acme/contracts';
 import { requestJson } from './http';
 import { queryKeys } from './queryKeys';
 
@@ -25,6 +30,19 @@ export function useJobTitleInsights(country: CountryCode | undefined) {
     queryKey: queryKeys.insights.jobTitles(country ?? ''),
     queryFn: () => fetchJobTitleInsights(country!),
     enabled: country !== undefined,
+    staleTime: 0,
+  });
+}
+
+export function fetchOrganisationComparison(): Promise<OrganisationComparison> {
+  return requestJson<OrganisationComparison>('/api/insights/organisation');
+}
+
+/** Always refetched when shown, so the figures never lag behind a change. */
+export function useOrganisationComparison() {
+  return useQuery({
+    queryKey: queryKeys.insights.organisation,
+    queryFn: fetchOrganisationComparison,
     staleTime: 0,
   });
 }

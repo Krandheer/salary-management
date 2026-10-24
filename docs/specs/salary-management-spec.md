@@ -192,13 +192,13 @@ Deleting never erases data. It sets the employee's status to **inactive**, with 
 
 ## Slice 9: Organisation-wide comparison (US dollars)
 
--   [ ] Shows the headcount and average salary in US dollars for each country.
--   [ ] Shows the headcount and average salary in US dollars for each department, across all countries.
--   [ ] An average in US dollars is the mean of each employee's salary after converting it to US dollars at the fixed rate.
--   [ ] Converted figures are rounded to whole US dollars, with halves rounded up.
--   [ ] Shows the "rates as of" date and the rate used for each currency.
--   [ ] Shows a note that converted figures are approximate.
--   [ ] Inactive employees are not counted, and countries or departments with no active employees are not listed.
+-   [x] Shows the headcount and average salary in US dollars for each country.
+-   [x] Shows the headcount and average salary in US dollars for each department, across all countries.
+-   [x] An average in US dollars is the mean of each employee's salary after converting it to US dollars at the fixed rate.
+-   [x] Converted figures are rounded to whole US dollars, with halves rounded up.
+-   [x] Shows the "rates as of" date and the rate used for each currency.
+-   [x] Shows a note that converted figures are approximate.
+-   [x] Inactive employees are not counted, and countries or departments with no active employees are not listed.
 
 ## Slice 10: Excel export & template
 

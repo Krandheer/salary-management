@@ -10,5 +10,8 @@ export function insightsRouter(service: InsightsService): Router {
   router.get('/api/insights/countries/:code/job-titles', (req, res) => {
     res.json(service.jobTitleInsights(req.params.code as CountryCode));
   });
+  router.get('/api/insights/organisation', (_req, res) => {
+    res.json(service.organisationComparison());
+  });
   return router;
 }

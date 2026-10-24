@@ -1,14 +1,19 @@
 import type {
   CountryCode,
+  CurrencyCode,
   CountryInsight,
   CountryInsights,
   CountryJobTitleInsights,
+  CountryUsdComparison,
+  DepartmentUsdComparison,
   JobTitleInsight,
+  OrganisationComparison,
 } from '@acme/contracts';
 import type { ActiveSalaryRow, EmployeeRepository } from '../employees/employeeRepository.ts';
 import { compareTitles, pickDisplayTitle } from '../employees/jobTitles.ts';
 import { NotFoundError } from '../shared/errors.ts';
-import { findCountry } from '../reference/referenceData.ts';
+import { RATES_AS_OF, RATES_SOURCE, findCountry, toUsdRates } from '../reference/referenceData.ts';
+import { averageInUsd } from './currencyConversion.ts';
 import { summarizeSalaries } from './statistics.ts';
 
 function groupAmountsByCountry(rows: readonly ActiveSalaryRow[]): Map<CountryCode, number[]> {
@@ -36,6 +41,52 @@ function groupByJobTitleKey(rows: readonly ActiveSalaryRow[]): ActiveSalaryRow[]
     rowsByKey.set(row.jobTitleKey, group);
   }
   return [...rowsByKey.values()];
+}
+
+function groupRowsBy<K>(
+  rows: readonly ActiveSalaryRow[],
+  keyOf: (row: ActiveSalaryRow) => K,
+): Map<K, ActiveSalaryRow[]> {
+  const rowsByKey = new Map<K, ActiveSalaryRow[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const group = rowsByKey.get(key) ?? [];
+    group.push(row);
+    rowsByKey.set(key, group);
+  }
+  return rowsByKey;
+}
+
+function countryUsdComparisons(
+  rows: readonly ActiveSalaryRow[],
+  toUsd: Record<CurrencyCode, number>,
+): CountryUsdComparison[] {
+  const comparisons = [...groupRowsBy(rows, (row) => row.countryCode)].map(
+    ([code, group]): CountryUsdComparison => {
+      const country = findCountry(code)!;
+      return {
+        country: country.code,
+        countryName: country.name,
+        headcount: group.length,
+        averageSalaryUsd: averageInUsd(group, toUsd),
+      };
+    },
+  );
+  return comparisons.sort((a, b) => a.countryName.localeCompare(b.countryName));
+}
+
+function departmentUsdComparisons(
+  rows: readonly ActiveSalaryRow[],
+  toUsd: Record<CurrencyCode, number>,
+): DepartmentUsdComparison[] {
+  const comparisons = [...groupRowsBy(rows, (row) => row.department)].map(
+    ([department, group]): DepartmentUsdComparison => ({
+      department,
+      headcount: group.length,
+      averageSalaryUsd: averageInUsd(group, toUsd),
+    }),
+  );
+  return comparisons.sort((a, b) => a.department.localeCompare(b.department));
 }
 
 export class InsightsService {
@@ -69,6 +120,19 @@ export class InsightsService {
       countryName: country.name,
       currency: country.currency,
       jobTitles,
+    };
+  }
+
+  organisationComparison(): OrganisationComparison {
+    const rows = this.employees.listActiveCurrentSalaries();
+    const toUsd = toUsdRates();
+    return {
+      referenceCurrency: 'USD',
+      ratesAsOf: RATES_AS_OF,
+      ratesSource: RATES_SOURCE,
+      toUsd,
+      byCountry: countryUsdComparisons(rows, toUsd),
+      byDepartment: departmentUsdComparisons(rows, toUsd),
     };
   }
 }

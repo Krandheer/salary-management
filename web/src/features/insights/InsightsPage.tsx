@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/StateViews';
 import { CountryInsightsTable } from './CountryInsightsTable';
 import { JobTitleInsightsPanel } from './JobTitleInsightsPanel';
+import { OrganisationComparisonPanel } from './OrganisationComparison';
 
 const COUNTRY_TAB = 'country';
 const JOB_TITLE_TAB = 'job-title';
@@ -20,10 +21,6 @@ function CountryInsightsPanel({
   if (isPending) return <LoadingState label="Loading country insights" />;
   if (data.countries.length === 0) return <EmptyState title="No employees yet" />;
   return <CountryInsightsTable rows={data.countries} onSelectCountry={onSelectCountry} />;
-}
-
-function ComingSoon() {
-  return <p className="text-muted-foreground">This view is coming soon.</p>;
 }
 
 export function InsightsPage() {
@@ -54,7 +51,7 @@ export function InsightsPage() {
           />
         </TabsContent>
         <TabsContent value={ORGANISATION_TAB}>
-          <ComingSoon />
+          <OrganisationComparisonPanel />
         </TabsContent>
       </Tabs>
     </div>
