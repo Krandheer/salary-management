@@ -163,4 +163,53 @@ yes update ai-usage.md and check
 
 ## Phase 3: Plan
 
-_(next: `/bee:planner`)_
+### 11. Generate the execution plan
+
+```
+/bee:planner
+```
+
+**AI output:** `docs/plans/salary-management-plan.md`, a step-by-step plan for building each slice.
+
+-   **Codebase scan:** a sub-agent scanned the (greenfield) repo and pulled the naming vocabulary from the spec.
+-   **UI design brief:** a sub-agent drafted one (`.claude/DESIGN.md`).
+-   **Stack checked against npm:** the AI ran `npm view` for current versions and peer dependencies instead of relying on memory. Two version choices came out of that:
+    -   **TypeScript 6.0 instead of 7:** `typescript-eslint` only supports TypeScript below 6.1.
+    -   **Node 24 LTS:** Vite 8, Vitest 5 and better-sqlite3 13 all need Node ≥ 22.12, and my machine had 22.2.
+-   **Exchange rates** came from the European Central Bank reference rates (2026-10-23), not invented.
+-   **Plan structure:** 14 slices. Each lists its structure, function signatures, control-flow outline, test strategy and quality checks. Model tiers are assigned by risk: the import slices get the strongest model. Mandatory security review is marked on the slices touching migrations, SQL built from user input, and the uploaded file.
+
+### 12. Change the stack: Drizzle ORM and shadcn/ui
+
+```
+I update the node, and can you use drizzle orm instead of raw sql, and also can be use shadcn for ui, and yes keep updating ai-usage.md
+```
+
+**My decisions:**
+
+-   **Drizzle ORM** instead of hand-written SQL, for a type-safe schema, generated migrations and typed queries.
+-   **shadcn/ui** (Radix + Tailwind CSS v4) instead of Mantine as the component library.
+
+**AI output:** the plan revised for both. Before rewriting it, the AI checked the libraries' installed type definitions and ran the shadcn CLI in a scratch Vite app, so the plan uses verified APIs:
+
+-   Drizzle's better-sqlite3 transactions are synchronous.
+-   Partial unique indexes are written as `uniqueIndex().on().where(sql…)`.
+-   The current-salary view is created in a custom migration and queried as a typed `.existing()` view.
+
+The design brief was also rewritten for shadcn/Tailwind tokens. It flagged that the shell's default `node` was still 22.2.0, although Node 24 is installed through nvm. Running `nvm alias default 24` fixes that.
+
+### 13. Approve the plan
+
+```
+node default 24 is done, I reviewed the plan you can mark it review, plz update the ai usage log
+```
+
+**My decisions:** I reviewed the revised plan (Drizzle and shadcn/ui), approved it, and set Node 24 as my default runtime.
+
+**AI output:** confirmed the nvm default alias is `24` and a fresh login shell resolves Node v24.22.1. It noticed that the agent's own shell, captured when the session started, still resolved 22.2.0, and flagged that before the build. It then marked the plan `[x] Reviewed` and updated this log.
+
+---
+
+## Phase 4: Build
+
+_(next: `/bee:plan-implementer`)_
