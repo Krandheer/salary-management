@@ -95,9 +95,10 @@ describe('EmployeeListPage', () => {
     const ashaRow = await screen.findByRole('row', { name: /Asha Rao/ });
     expect(within(ashaRow).getByText('Software Engineer')).toBeInTheDocument();
     expect(within(ashaRow).getByText('Engineering')).toBeInTheDocument();
-    expect(within(ashaRow).getByText('IN')).toBeInTheDocument();
+    expect(within(ashaRow).getByText('India')).toBeInTheDocument();
     expect(within(ashaRow).getByText('INR 1,850,000')).toBeInTheDocument();
     const johnRow = screen.getByRole('row', { name: /John Miller/ });
+    expect(within(johnRow).getByText('United States')).toBeInTheDocument();
     expect(within(johnRow).getByText('USD 85,000')).toBeInTheDocument();
   });
 

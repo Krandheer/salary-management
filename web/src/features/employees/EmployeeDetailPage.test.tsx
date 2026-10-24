@@ -64,7 +64,7 @@ beforeEach(() => {
 
 describe('EmployeeDetailPage', () => {
   it('shows the employee details and the starting salary entry', async () => {
-    requestJsonMock.mockResolvedValue(detail);
+    serveApi(() => detail);
 
     renderDetail('7');
 
@@ -78,13 +78,13 @@ describe('EmployeeDetailPage', () => {
   });
 
   it('shows the employee id, country, currency and current salary', async () => {
-    requestJsonMock.mockResolvedValue(detail);
+    serveApi(() => detail);
 
     renderDetail('7');
 
     await screen.findByRole('heading', { level: 1, name: 'Asha Rao' });
     expect(screen.getByText('Employee ID').nextElementSibling).toHaveTextContent('7');
-    expect(screen.getByText('Country').nextElementSibling).toHaveTextContent('IN');
+    expect(screen.getByText('Country').nextElementSibling).toHaveTextContent('India');
     expect(screen.getByText('Currency').nextElementSibling).toHaveTextContent('INR');
     expect(screen.getByText('Current salary').nextElementSibling).toHaveTextContent(
       'INR 1,850,000',
@@ -92,14 +92,14 @@ describe('EmployeeDetailPage', () => {
   });
 
   it('marks the newest salary entry as current', async () => {
-    requestJsonMock.mockResolvedValue({
+    serveApi(() => ({
       ...detail,
       currentSalary: 2_000_000,
       salaryHistory: [
         { ...detail.salaryHistory[0]!, id: 2, amount: 2_000_000, effectiveDate: '2025-01-01' },
         ...detail.salaryHistory,
       ],
-    });
+    }));
 
     renderDetail('7');
 
@@ -109,7 +109,7 @@ describe('EmployeeDetailPage', () => {
   });
 
   it('links to the edit page', async () => {
-    requestJsonMock.mockResolvedValue(detail);
+    serveApi(() => detail);
 
     renderDetail('7');
 
