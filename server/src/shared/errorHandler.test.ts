@@ -1,6 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
+import type { ImportPreview } from '@acme/contracts';
 import {
   EmailTakenError,
   EmployeeInactiveError,
@@ -12,6 +13,13 @@ import {
   ValidationError,
 } from './errors.ts';
 import { errorHandler, notFoundHandler } from './errorHandler.ts';
+
+const REJECTED_PREVIEW: ImportPreview = {
+  totals: { create: 0, update: 0, unchanged: 0, error: 1 },
+  creates: [],
+  updates: [],
+  errors: [{ row: 2, email: null, messages: ['Work Email: Work email is required'] }],
+};
 
 function appThrowing(error: unknown, logger = { error: vi.fn() }) {
   const app = express();
@@ -31,7 +39,7 @@ describe('errorHandler', () => {
     [new EmployeeInactiveError(), 409, 'EMPLOYEE_INACTIVE'],
     [new NotFoundError('Employee not found'), 404, 'NOT_FOUND'],
     [new ImportFileError('HEADER_MISMATCH'), 400, 'HEADER_MISMATCH'],
-    [new ImportRejectedError({ totals: {} }), 422, 'IMPORT_REJECTED'],
+    [new ImportRejectedError(REJECTED_PREVIEW), 422, 'IMPORT_REJECTED'],
     [new ImportNotAppliedError(), 500, 'IMPORT_NOT_APPLIED'],
   ])('maps %o to status %i and code %s', async (error, status, code) => {
     const response = await request(appThrowing(error)).get('/boom');
@@ -50,11 +58,11 @@ describe('errorHandler', () => {
   });
 
   it('includes the preview for a rejected import', async () => {
-    const preview = { totals: { error: 2 } };
+    const response = await request(appThrowing(new ImportRejectedError(REJECTED_PREVIEW))).get(
+      '/boom',
+    );
 
-    const response = await request(appThrowing(new ImportRejectedError(preview))).get('/boom');
-
-    expect(response.body.error.preview).toEqual(preview);
+    expect(response.body.error.preview).toEqual(REJECTED_PREVIEW);
   });
 
   it('hides the details of an unknown error and logs it', async () => {

@@ -1,4 +1,4 @@
-import type { FieldErrors } from '@acme/contracts';
+import type { FieldErrors, ImportPreview } from '@acme/contracts';
 
 export type { FieldErrors };
 
@@ -37,8 +37,9 @@ export class ImportFileError extends Error {
   }
 }
 
+/** Re-validating the file at confirm time found row errors; the fresh preview shows them. */
 export class ImportRejectedError extends Error {
-  constructor(readonly preview: unknown) {
+  constructor(readonly preview: ImportPreview) {
     super('The import has rows with errors');
   }
 }

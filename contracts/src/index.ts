@@ -252,3 +252,10 @@ export interface ImportPreview {
   updates: ImportUpdate[];
   errors: ImportRowError[];
 }
+
+/** What a confirmed import saved: how many employees it created and updated, and how many it left as they were. */
+export interface ImportResult {
+  created: number;
+  updated: number;
+  unchanged: number;
+}
