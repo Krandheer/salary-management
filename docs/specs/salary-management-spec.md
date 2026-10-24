@@ -202,15 +202,15 @@ Deleting never erases data. It sets the employee's status to **inactive**, with 
 
 ## Slice 10: Excel export & template
 
--   [ ] HR Manager can download the employee list as an `.xlsx` file named `employees-YYYY-MM-DD.xlsx`, using today's date.
--   [ ] The export contains only the employees that match the current search, filters and "Show inactive employees" setting.
--   [ ] The export has one row per employee, in the same order as the list, with the template columns in template order.
--   [ ] Salaries are exported as plain number cells, with the currency in its own column.
--   [ ] Hire dates are exported as date cells shown as `YYYY-MM-DD`.
--   [ ] Exporting when no employees match downloads a file with the header row only.
--   [ ] With 10,000 employees loaded, exporting all of them finishes within 5 seconds.
--   [ ] HR Manager can download a blank import template named `employee-import-template.xlsx` that contains only the header row.
--   [ ] The template and the export include a second sheet, "Allowed values", that lists the countries with their currencies, the departments, and the employment types.
+-   [x] HR Manager can download the employee list as an `.xlsx` file named `employees-YYYY-MM-DD.xlsx`, using today's date.
+-   [x] The export contains only the employees that match the current search, filters and "Show inactive employees" setting.
+-   [x] The export has one row per employee, in the same order as the list, with the template columns in template order.
+-   [x] Salaries are exported as plain number cells, with the currency in its own column.
+-   [x] Hire dates are exported as date cells shown as `YYYY-MM-DD`.
+-   [x] Exporting when no employees match downloads a file with the header row only.
+-   [x] With 10,000 employees loaded, exporting all of them finishes within 5 seconds.
+-   [x] HR Manager can download a blank import template named `employee-import-template.xlsx` that contains only the header row.
+-   [x] The template and the export include a second sheet, "Allowed values", that lists the countries with their currencies, the departments, and the employment types.
 
 ## Slice 11: Excel import, part 1: upload & preview
 

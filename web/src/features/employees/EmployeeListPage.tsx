@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { EmployeeStatus } from '@acme/contracts';
 import { useEmployeePage, useJobTitleOptions, type EmployeeListParams } from '@/api/employees';
 import { useReference } from '@/api/reference';
+import { buildExportUrl } from '@/api/spreadsheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -68,9 +69,14 @@ export function EmployeeListPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Employees</h1>
-        <Button asChild>
-          <Link to="/employees/new">Add employee</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <a href={buildExportUrl(viewParams)}>Export .xlsx</a>
+          </Button>
+          <Button asChild>
+            <Link to="/employees/new">Add employee</Link>
+          </Button>
+        </div>
       </div>
       {reference.data && (
         <EmployeeFilters

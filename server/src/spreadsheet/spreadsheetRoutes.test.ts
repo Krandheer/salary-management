@@ -2,24 +2,11 @@ import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { insertEmployee } from '../../test/builders.ts';
+import { downloadFile } from '../../test/download.ts';
 import { createTestApp } from '../../test/testApp.ts';
 import { ALLOWED_VALUES_SHEET } from './templateColumns.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-function binaryParser(
-  res: NodeJS.ReadableStream,
-  callback: (error: Error | null, body: Buffer) => void,
-) {
-  const chunks: Buffer[] = [];
-  res.on('data', (chunk: Buffer) => chunks.push(chunk));
-  res.on('end', () => callback(null, Buffer.concat(chunks)));
-}
-
-async function download(app: ReturnType<typeof createTestApp>['app'], url: string) {
-  const response = await request(app).get(url).buffer(true).parse(binaryParser);
-  return response;
-}
 
 async function firstSheetRows(content: Buffer): Promise<ExcelJS.CellValue[][]> {
   const workbook = new ExcelJS.Workbook();
@@ -37,7 +24,7 @@ describe('GET /api/exports/employees', () => {
   it('names the file after the clock date and sends an xlsx attachment', async () => {
     const { app } = createTestApp({ today: '2026-10-24' });
 
-    const response = await download(app, '/api/exports/employees');
+    const response = await downloadFile(app, '/api/exports/employees');
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain(XLSX_TYPE);
@@ -59,7 +46,7 @@ describe('GET /api/exports/employees', () => {
     });
 
     const rows = await firstSheetRows(
-      (await download(app, '/api/exports/employees')).body as Buffer,
+      (await downloadFile(app, '/api/exports/employees')).body as Buffer,
     );
 
     expect(namesOf(rows)).toEqual(['Amy First', 'Zed Last']);
@@ -76,7 +63,7 @@ describe('GET /api/exports/employees', () => {
     });
 
     const rows = await firstSheetRows(
-      (await download(app, '/api/exports/employees')).body as Buffer,
+      (await downloadFile(app, '/api/exports/employees')).body as Buffer,
     );
 
     expect(rows[1]![6]).toBe(65_000);
@@ -110,7 +97,7 @@ describe('GET /api/exports/employees', () => {
       salaryHistory,
     });
 
-    const response = await download(
+    const response = await downloadFile(
       app,
       '/api/exports/employees?search=maria&country=US&department=Sales',
     );
@@ -129,7 +116,7 @@ describe('GET /api/exports/employees', () => {
       salaryHistory,
     });
 
-    const response = await download(app, '/api/exports/employees?status=inactive');
+    const response = await downloadFile(app, '/api/exports/employees?status=inactive');
 
     expect(namesOf(await firstSheetRows(response.body as Buffer))).toEqual(['Gone Two']);
   });
@@ -141,9 +128,9 @@ describe('GET /api/exports/employees', () => {
       insertEmployee(db, { fullName, salaryHistory });
     }
 
-    const list = await request(app).get('/api/employees?page=1');
+    const list = await (await import('supertest')).default(app).get('/api/employees?page=1');
     const exported = await firstSheetRows(
-      (await download(app, '/api/exports/employees')).body as Buffer,
+      (await downloadFile(app, '/api/exports/employees')).body as Buffer,
     );
 
     const listedEmails = (list.body.items as { id: number }[]).map((item) => item.id);
@@ -161,7 +148,7 @@ describe('GET /api/exports/employees', () => {
   it('downloads a header-only file when nothing matches', async () => {
     const { app } = createTestApp();
 
-    const response = await download(app, '/api/exports/employees?search=nobody');
+    const response = await downloadFile(app, '/api/exports/employees?search=nobody');
     const rows = await firstSheetRows(response.body as Buffer);
 
     expect(response.status).toBe(200);
@@ -171,7 +158,7 @@ describe('GET /api/exports/employees', () => {
   it('includes the Allowed values sheet', async () => {
     const { app } = createTestApp();
 
-    const response = await download(app, '/api/exports/employees');
+    const response = await downloadFile(app, '/api/exports/employees');
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(response.body as ExcelJS.Buffer);
 
@@ -181,7 +168,7 @@ describe('GET /api/exports/employees', () => {
   it('rejects an unknown country filter with 400', async () => {
     const { app } = createTestApp();
 
-    const response = await download(app, '/api/exports/employees?country=ZZ');
+    const response = await downloadFile(app, '/api/exports/employees?country=ZZ');
 
     expect(response.status).toBe(400);
   });
@@ -191,7 +178,7 @@ describe('GET /api/imports/template', () => {
   it('serves the template under its fixed file name', async () => {
     const { app } = createTestApp();
 
-    const response = await download(app, '/api/imports/template');
+    const response = await downloadFile(app, '/api/imports/template');
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain(XLSX_TYPE);
@@ -204,7 +191,7 @@ describe('GET /api/imports/template', () => {
     const { app, db } = createTestApp();
     insertEmployee(db, { salaryHistory: [{ amount: 70_000, effectiveDate: '2020-01-15' }] });
 
-    const response = await download(app, '/api/imports/template');
+    const response = await downloadFile(app, '/api/imports/template');
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(response.body as ExcelJS.Buffer);
 

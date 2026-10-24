@@ -1,9 +1,9 @@
 import ExcelJS from 'exceljs';
-import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateSeedEmployees } from '../src/seed/generateEmployees.ts';
 import { SEED_EMPLOYEE_COUNT, SEED_RANDOM_SEED } from '../src/seed/seedCatalogue.ts';
 import { replaceAllEmployees } from '../src/seed/seedDatabase.ts';
+import { downloadFile } from '../test/download.ts';
 import { createTestApp } from '../test/testApp.ts';
 
 const EXPORT_BUDGET_MS = 5000;
@@ -22,14 +22,7 @@ describe('employee export performance with 10,000 employees', () => {
 
   it('exports every active employee in under five seconds', async () => {
     const startedAt = performance.now();
-    const response = await request(app)
-      .get('/api/exports/employees')
-      .buffer(true)
-      .parse((res, callback) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => callback(null, Buffer.concat(chunks)));
-      });
+    const response = await downloadFile(app, '/api/exports/employees');
     const elapsedMs = performance.now() - startedAt;
 
     expect(response.status).toBe(200);

@@ -12,7 +12,8 @@ import type {
 } from '@acme/contracts';
 import type { AppDatabase } from '../db/database.ts';
 import { currentSalaries, employees, salaryHistory } from '../db/schema.ts';
-import { currencyFor } from '../reference/referenceData.ts';
+import { currencyFor, findCountry } from '../reference/referenceData.ts';
+import type { ExportRow } from '../spreadsheet/workbookWriter.ts';
 import { normalizeKey } from '../shared/text.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
 import type { EmployeeFields } from './employeeValidation.ts';
@@ -21,6 +22,9 @@ export const STARTING_SALARY_REASON = 'Starting salary';
 
 /** The current salary is the first row in this order; the `current_salaries` view uses the same rule. */
 export const SALARY_HISTORY_ORDER = [desc(salaryHistory.effectiveDate), desc(salaryHistory.id)];
+
+/** The list's order, shared with the export: name A to Z, then id. */
+const EMPLOYEE_LIST_ORDER = [asc(employees.nameKey), asc(employees.id)];
 
 interface EmployeeSummaryRow {
   id: number;
@@ -112,7 +116,7 @@ export class EmployeeRepository {
       .from(employees)
       .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
       .where(isInView)
-      .orderBy(asc(employees.nameKey), asc(employees.id))
+      .orderBy(...EMPLOYEE_LIST_ORDER)
       .limit(pageSize)
       .offset((query.page - 1) * pageSize)
       .all()
@@ -125,6 +129,31 @@ export class EmployeeRepository {
       total,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
     };
+  }
+
+  /** Every employee in view with the current salary, in the list's order and without paging. */
+  listForExport(filters: EmployeeFilters): ExportRow[] {
+    return this.db
+      .select({
+        fullName: employees.fullName,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        countryCode: employees.countryCode,
+        currency: currentSalaries.currency,
+        annualSalary: currentSalaries.amount,
+        employmentType: employees.employmentType,
+        hireDate: employees.hireDate,
+      })
+      .from(employees)
+      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
+      .where(buildFilterConditions(filters))
+      .orderBy(...EMPLOYEE_LIST_ORDER)
+      .all()
+      .map(({ countryCode, ...row }) => ({
+        ...row,
+        countryName: findCountry(countryCode)?.name ?? countryCode,
+      }));
   }
 
   /** One row per employee in view, ignoring the job title filter, so the job title choices stay complete. */

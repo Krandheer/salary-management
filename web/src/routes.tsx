@@ -5,15 +5,7 @@ import { EditEmployeePage } from './features/employees/EditEmployeePage';
 import { EmployeeDetailPage } from './features/employees/EmployeeDetailPage';
 import { EmployeeListPage } from './features/employees/EmployeeListPage';
 import { InsightsPage } from './features/insights/InsightsPage';
-
-function ComingSoonPage({ title }: { title: string }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <p className="text-muted-foreground">This page is coming soon.</p>
-    </div>
-  );
-}
+import { ImportExportPage } from './features/spreadsheet/ImportExportPage';
 
 export const appRoutes: RouteObject[] = [
   {
@@ -25,7 +17,7 @@ export const appRoutes: RouteObject[] = [
       { path: '/employees/:id', element: <EmployeeDetailPage /> },
       { path: '/employees/:id/edit', element: <EditEmployeePage /> },
       { path: '/insights', element: <InsightsPage /> },
-      { path: '/import-export', element: <ComingSoonPage title="Import / Export" /> },
+      { path: '/import-export', element: <ImportExportPage /> },
     ],
   },
 ];
