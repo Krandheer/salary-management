@@ -731,7 +731,13 @@ describe('POST /api/imports', () => {
     expect(rehireId).not.toBe(goneId);
     const rehire = await detailOf(app, rehireId);
     expect(rehire.linkedEmployments).toEqual([
-      { id: goneId, hireDate: '2020-01-15', exitDate: '2024-05-01', status: 'inactive' },
+      {
+        id: goneId,
+        fullName: 'Gail Gone',
+        hireDate: '2020-01-15',
+        exitDate: '2024-05-01',
+        status: 'inactive',
+      },
     ]);
     expect(rehire.salaryHistory).toEqual([
       expect.objectContaining({

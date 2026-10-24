@@ -180,8 +180,20 @@ describe('EmployeeDetailPage', () => {
     serveApi(() => ({
       ...detail,
       linkedEmployments: [
-        { id: 3, hireDate: '2020-01-15', exitDate: '2023-12-31', status: 'inactive' },
-        { id: 2, hireDate: '2015-05-01', exitDate: '2019-05-01', status: 'inactive' },
+        {
+          id: 3,
+          fullName: 'Asha R.',
+          hireDate: '2020-01-15',
+          exitDate: '2023-12-31',
+          status: 'inactive',
+        },
+        {
+          id: 2,
+          fullName: 'Asha R.',
+          hireDate: '2015-05-01',
+          exitDate: '2019-05-01',
+          status: 'inactive',
+        },
       ],
     }));
 

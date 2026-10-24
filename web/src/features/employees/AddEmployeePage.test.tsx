@@ -189,7 +189,13 @@ describe('AddEmployeePage', () => {
     serveApi(() => aDetail(), {
       activeEmployeeId: null,
       inactiveEmployees: [
-        { id: 3, hireDate: '2020-01-15', exitDate: '2025-06-30', status: 'inactive' },
+        {
+          id: 3,
+          fullName: 'Asha Rao-Kumar',
+          hireDate: '2020-01-15',
+          exitDate: '2025-06-30',
+          status: 'inactive',
+        },
       ],
     });
     const user = userEvent.setup();
@@ -200,6 +206,7 @@ describe('AddEmployeePage', () => {
 
     const notice = await screen.findByRole('alert');
     expect(notice).toHaveTextContent(/inactive employee/i);
+    expect(notice).toHaveTextContent('Asha Rao-Kumar');
     expect(notice).toHaveTextContent('ID 3');
     expect(notice).toHaveTextContent('2025-06-30');
     expect(notice).toHaveTextContent(/new employee record linked/i);

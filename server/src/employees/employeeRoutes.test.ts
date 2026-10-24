@@ -1249,10 +1249,22 @@ describe("rehire: POST /api/employees with an inactive employee's email", () => 
     const formerDetail = (await request(app).get(`/api/employees/${formerId}`))
       .body as EmployeeDetail;
     expect(created.linkedEmployments).toEqual([
-      { id: formerId, hireDate: '2020-01-15', exitDate: '2025-06-30', status: 'inactive' },
+      {
+        id: formerId,
+        fullName: 'Asha Rao',
+        hireDate: '2020-01-15',
+        exitDate: '2025-06-30',
+        status: 'inactive',
+      },
     ]);
     expect(formerDetail.linkedEmployments).toEqual([
-      { id: created.id, hireDate: '2026-02-01', exitDate: null, status: 'active' },
+      {
+        id: created.id,
+        fullName: 'Asha Rao',
+        hireDate: '2026-02-01',
+        exitDate: null,
+        status: 'active',
+      },
     ]);
   });
 
@@ -1374,12 +1386,14 @@ describe('GET /api/employees/email-check', () => {
   it('lists the inactive employees with the email, most recent exit first', async () => {
     const { app, db } = createTestApp();
     const older = insertEmployee(db, {
+      fullName: 'Asha Rao',
       email: 'asha.rao@acme.example',
       hireDate: '2018-01-01',
       status: 'inactive',
       exitDate: '2019-01-01',
     });
     const newer = insertEmployee(db, {
+      fullName: 'Asha Rao-Kumar',
       email: 'asha.rao@acme.example',
       hireDate: '2020-01-01',
       status: 'inactive',
@@ -1391,8 +1405,20 @@ describe('GET /api/employees/email-check', () => {
     expect(body).toEqual({
       activeEmployeeId: null,
       inactiveEmployees: [
-        { id: newer, hireDate: '2020-01-01', exitDate: '2022-01-01', status: 'inactive' },
-        { id: older, hireDate: '2018-01-01', exitDate: '2019-01-01', status: 'inactive' },
+        {
+          id: newer,
+          fullName: 'Asha Rao-Kumar',
+          hireDate: '2020-01-01',
+          exitDate: '2022-01-01',
+          status: 'inactive',
+        },
+        {
+          id: older,
+          fullName: 'Asha Rao',
+          hireDate: '2018-01-01',
+          exitDate: '2019-01-01',
+          status: 'inactive',
+        },
       ],
     });
   });
