@@ -208,3 +208,47 @@ export interface OrganisationComparison {
   /** Ordered A to Z. */
   byDepartment: DepartmentUsdComparison[];
 }
+
+export interface ImportTotals {
+  create: number;
+  update: number;
+  unchanged: number;
+  error: number;
+}
+
+/** A row that would add a new employee; `rehireOf` names the inactive record it links to. */
+export interface ImportCreate {
+  row: number;
+  email: string;
+  rehireOf: number | null;
+}
+
+/** One field an update would change; `field` is the template column header, e.g. "Annual Salary". */
+export interface ImportFieldChange {
+  field: string;
+  from: string;
+  to: string;
+}
+
+export interface ImportUpdate {
+  row: number;
+  email: string;
+  changes: ImportFieldChange[];
+}
+
+export interface ImportRowError {
+  row: number;
+  email: string | null;
+  messages: string[];
+}
+
+/**
+ * What an import would do, without saving anything. `row` is the spreadsheet row number
+ * (the header is row 1); every list is in row order.
+ */
+export interface ImportPreview {
+  totals: ImportTotals;
+  creates: ImportCreate[];
+  updates: ImportUpdate[];
+  errors: ImportRowError[];
+}

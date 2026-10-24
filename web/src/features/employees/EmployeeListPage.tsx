@@ -7,11 +7,11 @@ import { buildExportUrl } from '@/api/spreadsheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { PaginationBar } from '@/shared/PaginationBar';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/StateViews';
 import { useDebouncedValue } from '@/shared/useDebouncedValue';
 import { EmployeeFilters, NO_FILTERS, type EmployeeFiltersValue } from './EmployeeFilters';
 import { EmployeeTable } from './EmployeeTable';
-import { PaginationBar } from './PaginationBar';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const FIRST_PAGE = 1;
