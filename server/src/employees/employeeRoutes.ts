@@ -31,5 +31,8 @@ export function employeeRouter(service: EmployeeService): Router {
   router.get('/api/employees/:id', (req, res) => {
     res.json(service.getEmployee(parseEmployeeId(req.params.id)));
   });
+  router.patch('/api/employees/:id', (req, res) => {
+    res.json(service.updateEmployee(parseEmployeeId(req.params.id), toInputRecord(req.body)));
+  });
   return router;
 }

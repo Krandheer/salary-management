@@ -21,6 +21,28 @@ export interface EmployeeFields {
 export type EmployeeValidation =
   { ok: true; fields: EmployeeFields } | { ok: false; fieldErrors: FieldErrors };
 
+/** A salary change that passed validation; Slice 5 lets the user choose the date and reason. */
+export interface ValidSalaryChange {
+  amount: number;
+  effectiveDate: IsoDate;
+  reason: string | null;
+}
+
+export type EmployeeUpdateValidation =
+  | { ok: true; fields: EmployeeFields; salaryChange: ValidSalaryChange | null }
+  | { ok: false; fieldErrors: FieldErrors };
+
+const SALARY_CHANGE_AMOUNT = 'salaryChange.amount';
+const EDITABLE_FIELDS = [
+  'fullName',
+  'email',
+  'jobTitle',
+  'department',
+  'country',
+  'employmentType',
+  'hireDate',
+] as const;
+
 const WELL_FORMED_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 const WHOLE_NUMBER_TEXT = /^-?\d+$/;
 
@@ -143,4 +165,100 @@ export function validateEmployeeFields(
   const fieldErrors = collectFieldErrors(input, context.today);
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
   return { ok: true, fields: normaliseFields(input) };
+}
+
+function currentAsInput(current: EmployeeFields): Record<string, unknown> {
+  const { countryCode, ...others } = current;
+  return { ...others, country: countryCode };
+}
+
+function pickEditableFields(patch: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    EDITABLE_FIELDS.filter((name) => patch[name] !== undefined).map((name) => [name, patch[name]]),
+  );
+}
+
+/** The amount typed for a salary change; `given` is false when the patch holds no salary change. */
+function readSalaryProposal(patch: Record<string, unknown>): { given: boolean; amount: unknown } {
+  const change = patch.salaryChange;
+  if (change === undefined || change === null) return { given: false, amount: undefined };
+  const amount =
+    typeof change === 'object' ? (change as Record<string, unknown>).amount : undefined;
+  return { given: true, amount };
+}
+
+/**
+ * The shared rules judge the salary as `annualSalary`. An edit reports it as the salary change,
+ * and ignores the stored salary when the user is not changing it.
+ */
+function relabelSalaryError(
+  sharedErrors: FieldErrors,
+  isSalaryProposed: boolean,
+  isNewSalaryRequired: boolean,
+): FieldErrors {
+  const { annualSalary, ...others } = sharedErrors;
+  if (isSalaryProposed && annualSalary) return { ...others, [SALARY_CHANGE_AMOUNT]: annualSalary };
+  return isNewSalaryRequired ? others : sharedErrors;
+}
+
+function collectEditOnlyErrors(
+  current: EmployeeFields,
+  merged: Record<string, unknown>,
+  fieldErrors: FieldErrors,
+  isSalaryProposed: boolean,
+  context: { earliestSalaryDate: IsoDate },
+): FieldErrors {
+  const errors: FieldErrors = {};
+  if (
+    !isSalaryProposed &&
+    !fieldErrors.country &&
+    asTrimmedText(merged.country) !== current.countryCode
+  ) {
+    errors[SALARY_CHANGE_AMOUNT] = 'Enter a new salary when the country changes';
+  }
+  const hireDate = merged.hireDate;
+  if (
+    !fieldErrors.hireDate &&
+    typeof hireDate === 'string' &&
+    hireDate > context.earliestSalaryDate
+  ) {
+    errors.hireDate = `Hire date cannot be later than the earliest salary entry (${context.earliestSalaryDate})`;
+  }
+  return errors;
+}
+
+/**
+ * Merges the patch onto the stored employee and re-applies the shared field rules, plus the
+ * edit-only rules: a country change needs a new salary, and the hire date cannot move past
+ * the earliest salary history entry.
+ */
+export function validateEmployeeUpdate(
+  current: EmployeeFields,
+  patch: Record<string, unknown>,
+  context: { today: IsoDate; earliestSalaryDate: IsoDate },
+): EmployeeUpdateValidation {
+  const proposal = readSalaryProposal(patch);
+  const merged = {
+    ...currentAsInput(current),
+    ...pickEditableFields(patch),
+    ...(proposal.given ? { annualSalary: proposal.amount } : {}),
+  };
+  const validation = validateEmployeeFields(merged, { today: context.today });
+  const sharedErrors = validation.ok ? {} : validation.fieldErrors;
+  const editOnlyErrors = collectEditOnlyErrors(
+    current,
+    merged,
+    sharedErrors,
+    proposal.given,
+    context,
+  );
+  const isNewSalaryRequired = SALARY_CHANGE_AMOUNT in editOnlyErrors;
+  const salaryErrors = relabelSalaryError(sharedErrors, proposal.given, isNewSalaryRequired);
+  const fieldErrors = { ...salaryErrors, ...editOnlyErrors };
+
+  if (!validation.ok || Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  const salaryChange = proposal.given
+    ? { amount: validation.fields.annualSalary, effectiveDate: context.today, reason: null }
+    : null;
+  return { ok: true, fields: validation.fields, salaryChange };
 }

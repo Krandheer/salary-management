@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, min, ne, sql, type SQL } from 'drizzle-orm';
 import type {
   CountryCode,
   CurrencyCode,
@@ -6,6 +6,7 @@ import type {
   EmployeeListPage,
   EmployeeStatus,
   EmployeeSummary,
+  IsoDate,
   SalaryHistoryEntry,
 } from '@acme/contracts';
 import type { AppDatabase } from '../db/database.ts';
@@ -56,6 +57,20 @@ export function buildFilterConditions(filters: EmployeeFilters): SQL | undefined
     department ? eq(employees.department, department) : undefined,
     jobTitleKey ? eq(employees.jobTitleKey, jobTitleKey) : undefined,
   );
+}
+
+/** What an edit starts from: the stored fields and the facts the edit rules need. */
+export interface EditableState {
+  fields: EmployeeFields;
+  status: EmployeeStatus;
+  earliestSalaryDate: IsoDate;
+}
+
+export interface SalaryEntryInput {
+  amount: number;
+  currency: CurrencyCode;
+  effectiveDate: IsoDate;
+  reason: string | null;
 }
 
 export class EmployeeRepository {
@@ -113,6 +128,27 @@ export class EmployeeRepository {
     return row?.id ?? null;
   }
 
+  /** The id of another active employee with this email (already lower-cased), if any. */
+  findActiveIdByEmailExcluding(email: string, excludedId: number): number | null {
+    const row = this.db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.email, normalizeKey(email)),
+          eq(employees.status, 'active'),
+          ne(employees.id, excludedId),
+        ),
+      )
+      .get();
+    return row?.id ?? null;
+  }
+
+  /** Runs the work as one transaction; a throw undoes every write made inside it. */
+  inTransaction<T>(work: () => T): T {
+    return this.db.transaction(work);
+  }
+
   /** Inserts an active employee with a first salary history entry; returns the new id. */
   insertEmployee(fields: EmployeeFields, recordedAt: string): number {
     return this.db.transaction(() => {
@@ -147,6 +183,63 @@ export class EmployeeRepository {
         .run();
       return id;
     });
+  }
+
+  getEditableState(id: number): EditableState | null {
+    const row = this.db
+      .select({
+        employee: employees,
+        currentSalary: currentSalaries.amount,
+        earliestSalaryDate: min(salaryHistory.effectiveDate),
+      })
+      .from(employees)
+      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
+      .innerJoin(salaryHistory, eq(salaryHistory.employeeId, employees.id))
+      .where(eq(employees.id, id))
+      .groupBy(employees.id)
+      .get();
+    if (!row?.earliestSalaryDate) return null;
+    const { employee } = row;
+    return {
+      status: employee.status,
+      earliestSalaryDate: row.earliestSalaryDate,
+      fields: {
+        fullName: employee.fullName,
+        email: employee.email,
+        jobTitle: employee.jobTitle,
+        department: employee.department,
+        countryCode: employee.countryCode as CountryCode,
+        employmentType: employee.employmentType,
+        hireDate: employee.hireDate,
+        annualSalary: row.currentSalary,
+      },
+    };
+  }
+
+  /** Overwrites the employee's own fields (not the salary) and refreshes the search keys. */
+  updateEmployeeFields(id: number, fields: EmployeeFields): void {
+    this.db
+      .update(employees)
+      .set({
+        fullName: fields.fullName,
+        nameKey: normalizeKey(fields.fullName),
+        email: fields.email,
+        jobTitle: fields.jobTitle,
+        jobTitleKey: normalizeKey(fields.jobTitle),
+        department: fields.department,
+        countryCode: fields.countryCode,
+        employmentType: fields.employmentType,
+        hireDate: fields.hireDate,
+      })
+      .where(eq(employees.id, id))
+      .run();
+  }
+
+  insertSalaryEntry(employeeId: number, entry: SalaryEntryInput, recordedAt: string): void {
+    this.db
+      .insert(salaryHistory)
+      .values({ employeeId, ...entry, recordedAt })
+      .run();
   }
 
   getDetail(id: number): EmployeeDetail | null {

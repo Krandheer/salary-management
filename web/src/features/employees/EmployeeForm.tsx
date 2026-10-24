@@ -16,6 +16,10 @@ import {
 import type { EmployeeFormValues } from './employeeFormValues';
 
 interface EmployeeFormProps {
+  /** Create asks for the salary; edit offers an optional new salary. */
+  mode: 'create' | 'edit';
+  /** Where Cancel goes. */
+  cancelTo: string;
   initialValues: EmployeeFormValues;
   reference: ReferenceData;
   onSubmit: (values: EmployeeFormValues) => Promise<void>;
@@ -30,6 +34,7 @@ interface FormFieldProps {
   name: FieldName;
   label: string;
   error: string | undefined;
+  isRequired?: boolean;
   children: (aria: {
     id: string;
     'aria-invalid': boolean;
@@ -37,15 +42,19 @@ interface FormFieldProps {
   }) => ReactNode;
 }
 
-function FormField({ name, label, error, children }: FormFieldProps) {
+function FormField({ name, label, error, isRequired = true, children }: FormFieldProps) {
   const id = `employee-${name}`;
   const errorId = `${id}-error`;
   return (
     <Field data-invalid={Boolean(error)}>
       <FieldLabel htmlFor={id}>
         {label}
-        <span aria-hidden="true">*</span>
-        <span className="sr-only">(required)</span>
+        {isRequired && (
+          <>
+            <span aria-hidden="true">*</span>
+            <span className="sr-only">(required)</span>
+          </>
+        )}
       </FieldLabel>
       {children({
         id,
@@ -63,6 +72,8 @@ function FormField({ name, label, error, children }: FormFieldProps) {
 }
 
 export function EmployeeForm({
+  mode,
+  cancelTo,
   initialValues,
   reference,
   onSubmit,
@@ -71,6 +82,7 @@ export function EmployeeForm({
 }: EmployeeFormProps) {
   const { register, control, handleSubmit, setError, setFocus, formState } =
     useForm<EmployeeFormValues>({ defaultValues: initialValues, mode: 'onBlur' });
+  const isEdit = mode === 'edit';
   const messageFor = (name: FieldName) => formState.errors[name]?.message;
   const chosenCountry = useWatch({ control, name: 'country' });
   const currency = reference.countries.find((country) => country.code === chosenCountry)?.currency;
@@ -151,8 +163,13 @@ export function EmployeeForm({
         {textField('hireDate', 'Hire date', { type: 'date', max: reference.today })}
       </FieldSet>
       <FieldSet>
-        <FieldLegend>Pay</FieldLegend>
-        <FormField name="annualSalary" label="Annual salary" error={messageFor('annualSalary')}>
+        <FieldLegend>{isEdit ? 'Change salary' : 'Pay'}</FieldLegend>
+        <FormField
+          name="annualSalary"
+          label={isEdit ? 'New annual salary' : 'Annual salary'}
+          isRequired={!isEdit}
+          error={messageFor('annualSalary')}
+        >
           {(aria) => (
             <div className="flex items-center gap-2">
               <span className="w-12 text-muted-foreground">{currency}</span>
@@ -160,6 +177,11 @@ export function EmployeeForm({
             </div>
           )}
         </FormField>
+        {isEdit && (
+          <p className="text-sm text-muted-foreground">
+            Leave empty to keep the current salary. Required when the country changes.
+          </p>
+        )}
       </FieldSet>
       <div className="flex gap-3">
         <Button type="submit" disabled={submitting}>
@@ -167,7 +189,7 @@ export function EmployeeForm({
           Save
         </Button>
         <Button variant="ghost" asChild>
-          <Link to="/employees">Cancel</Link>
+          <Link to={cancelTo}>Cancel</Link>
         </Button>
       </div>
     </form>

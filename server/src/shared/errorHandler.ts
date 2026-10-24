@@ -24,9 +24,20 @@ function failure(status: number, code: string, message: string, extra = {}): Htt
   return { status, body: { error: { code, message, ...extra } } };
 }
 
+/** body-parser's error for a request body that is not valid JSON. */
+function isMalformedJsonBody(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { type?: unknown }).type === 'entity.parse.failed'
+  );
+}
+
 function toHttpFailure(error: unknown): HttpFailure | null {
   if (error instanceof ValidationError)
     return failure(400, 'VALIDATION_FAILED', error.message, { fieldErrors: error.fieldErrors });
+  if (isMalformedJsonBody(error))
+    return failure(400, 'VALIDATION_FAILED', 'Request body is not valid JSON');
   if (error instanceof InvalidQueryError) return failure(400, 'INVALID_QUERY', error.message);
   if (error instanceof EmailTakenError) return failure(409, 'EMAIL_TAKEN', error.message);
   if (error instanceof EmployeeInactiveError)

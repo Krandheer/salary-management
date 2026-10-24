@@ -1,9 +1,15 @@
 import { PAGE_SIZE, type EmployeeDetail, type EmployeeListPage } from '@acme/contracts';
+import { currencyFor } from '../reference/referenceData.ts';
 import type { Clock } from '../shared/clock.ts';
-import { EmailTakenError, NotFoundError, ValidationError } from '../shared/errors.ts';
+import {
+  EmailTakenError,
+  EmployeeInactiveError,
+  NotFoundError,
+  ValidationError,
+} from '../shared/errors.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
-import type { EmployeeRepository } from './employeeRepository.ts';
-import { validateEmployeeFields } from './employeeValidation.ts';
+import type { EditableState, EmployeeRepository } from './employeeRepository.ts';
+import { validateEmployeeFields, validateEmployeeUpdate } from './employeeValidation.ts';
 import { compareTitles, pickDisplayTitle } from './jobTitles.ts';
 
 function groupSpellingsByKey(
@@ -42,9 +48,39 @@ export class EmployeeService {
     return this.getEmployee(id);
   }
 
+  updateEmployee(id: number, patch: Record<string, unknown>): EmployeeDetail {
+    this.repository.inTransaction(() => this.applyUpdate(id, patch));
+    return this.getEmployee(id);
+  }
+
   getEmployee(id: number): EmployeeDetail {
     const detail = this.repository.getDetail(id);
     if (!detail) throw new NotFoundError(`Employee ${id} not found`);
     return detail;
+  }
+
+  private applyUpdate(id: number, patch: Record<string, unknown>): void {
+    const state = this.loadEditableState(id);
+    const validation = validateEmployeeUpdate(state.fields, patch, {
+      today: this.clock.today(),
+      earliestSalaryDate: state.earliestSalaryDate,
+    });
+    if (!validation.ok) throw new ValidationError(validation.fieldErrors);
+    const { fields, salaryChange } = validation;
+    if (this.repository.findActiveIdByEmailExcluding(fields.email, id) !== null) {
+      throw new EmailTakenError();
+    }
+    this.repository.updateEmployeeFields(id, fields);
+    if (salaryChange) {
+      const entry = { ...salaryChange, currency: currencyFor(fields.countryCode) };
+      this.repository.insertSalaryEntry(id, entry, this.clock.now());
+    }
+  }
+
+  private loadEditableState(id: number): EditableState {
+    const state = this.repository.getEditableState(id);
+    if (!state) throw new NotFoundError(`Employee ${id} not found`);
+    if (state.status === 'inactive') throw new EmployeeInactiveError();
+    return state;
   }
 }

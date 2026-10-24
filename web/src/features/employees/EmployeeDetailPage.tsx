@@ -1,8 +1,9 @@
 import { Link, useParams } from 'react-router';
-import { ArrowLeft, CircleCheck, MinusCircle } from 'lucide-react';
+import { ArrowLeft, CircleCheck, MinusCircle, Pencil } from 'lucide-react';
 import type { EmployeeDetail } from '@acme/contracts';
 import { useEmployee } from '@/api/employees';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
   Table,
@@ -69,13 +70,23 @@ function EmployeeDetails({ employee }: { employee: EmployeeDetail }) {
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold">{employee.fullName}</h1>
         <StatusBadge status={employee.status} />
+        {employee.status === 'active' && (
+          <Button variant="outline" asChild className="ml-auto">
+            <Link to={`/employees/${employee.id}/edit`}>
+              <Pencil aria-hidden="true" />
+              Edit
+            </Link>
+          </Button>
+        )}
       </div>
       <Separator />
       <dl className="grid grid-cols-2 gap-4">
+        <DetailRow term="Employee ID">{String(employee.id)}</DetailRow>
         <DetailRow term="Work email">{employee.email}</DetailRow>
         <DetailRow term="Job title">{employee.jobTitle}</DetailRow>
         <DetailRow term="Department">{employee.department}</DetailRow>
         <DetailRow term="Country">{employee.country}</DetailRow>
+        <DetailRow term="Currency">{employee.currency}</DetailRow>
         <DetailRow term="Employment type">{employee.employmentType}</DetailRow>
         <DetailRow term="Hire date">{formatDate(employee.hireDate)}</DetailRow>
         <DetailRow term="Current salary">

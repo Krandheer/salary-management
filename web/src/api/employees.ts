@@ -5,6 +5,7 @@ import type {
   EmployeeListPage,
   EmployeeListParams,
   JobTitleOptions,
+  UpdateEmployeeRequest,
 } from '@acme/contracts';
 import { buildQueryString, requestJson } from './http';
 import { queryKeys } from './queryKeys';
@@ -44,6 +45,17 @@ export function useJobTitleOptions(params: JobTitleOptionsParams) {
 export function createEmployee(request: CreateEmployeeRequest): Promise<EmployeeDetail> {
   return requestJson<EmployeeDetail>('/api/employees', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+}
+
+export function updateEmployee(
+  id: number,
+  request: UpdateEmployeeRequest,
+): Promise<EmployeeDetail> {
+  return requestJson<EmployeeDetail>(`/api/employees/${id}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   });

@@ -111,15 +111,15 @@ Seeded database, then the API, then a paginated list in the UI.
 
 ## Slice 4: Edit an employee / update salary
 
--   [ ] HR Manager can open an employee's page and see their employee ID, full name, work email, job title, department, country, currency, current salary, employment type, hire date and status.
--   [ ] HR Manager can change any non-salary field, and the employee's page and the list show the new value.
--   [ ] HR Manager can change an employee's salary, and the list then shows the new amount.
--   [ ] The validation rules from Slice 3 also apply to edits.
--   [ ] Saving with the employee's own unchanged email is accepted, and changing it to another employee's email shows an error.
--   [ ] Changing an employee's country changes the currency shown to that country's currency.
--   [ ] Shows an error when the country is changed without entering a new salary.
--   [ ] Shows an error when the hire date is moved later than the employee's earliest salary history entry.
--   [ ] Shows a "Employee not found" message when opening or saving an employee who doesn't exist.
+-   [x] HR Manager can open an employee's page and see their employee ID, full name, work email, job title, department, country, currency, current salary, employment type, hire date and status.
+-   [x] HR Manager can change any non-salary field, and the employee's page and the list show the new value.
+-   [x] HR Manager can change an employee's salary, and the list then shows the new amount.
+-   [x] The validation rules from Slice 3 also apply to edits.
+-   [x] Saving with the employee's own unchanged email is accepted, and changing it to another employee's email shows an error.
+-   [x] Changing an employee's country changes the currency shown to that country's currency.
+-   [x] Shows an error when the country is changed without entering a new salary.
+-   [x] Shows an error when the hire date is moved later than the employee's earliest salary history entry.
+-   [x] Shows a "Employee not found" message when opening or saving an employee who doesn't exist.
 
 ## Slice 5: Salary history
 

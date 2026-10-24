@@ -115,3 +115,18 @@ export interface CreateEmployeeRequest {
   employmentType: string;
   hireDate: string;
 }
+
+/**
+ * What the edit form sends: only the fields that changed. A new salary goes in
+ * `salaryChange`; it is required when the country changes.
+ */
+export interface UpdateEmployeeRequest {
+  fullName?: string;
+  email?: string;
+  jobTitle?: string;
+  department?: string;
+  country?: string;
+  employmentType?: string;
+  hireDate?: string;
+  salaryChange?: { amount: string | number };
+}

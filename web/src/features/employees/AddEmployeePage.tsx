@@ -4,26 +4,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { FieldErrors } from '@acme/contracts';
 import { createEmployee } from '@/api/employees';
-import { ApiError } from '@/api/http';
 import { queryKeys } from '@/api/queryKeys';
 import { useReference } from '@/api/reference';
 import { ErrorState, LoadingState } from '@/shared/StateViews';
 import { EmployeeForm } from './EmployeeForm';
+import { toFieldErrors } from './saveErrors';
 import {
   EMPTY_EMPLOYEE_FORM,
   toCreateRequest,
   type EmployeeFormValues,
 } from './employeeFormValues';
-
-const EMAIL_TAKEN = 'EMAIL_TAKEN';
-
-/** The field errors a failed save should show next to the fields, or null for other failures. */
-function toFieldErrors(error: unknown): FieldErrors | null {
-  if (!(error instanceof ApiError)) return null;
-  if (error.fieldErrors) return error.fieldErrors;
-  if (error.code === EMAIL_TAKEN) return { email: error.message };
-  return null;
-}
 
 export function AddEmployeePage() {
   const navigate = useNavigate();
@@ -62,6 +52,8 @@ export function AddEmployeePage() {
       {reference.isPending && <LoadingState label="Loading form" />}
       {reference.data && (
         <EmployeeForm
+          mode="create"
+          cancelTo="/employees"
           initialValues={EMPTY_EMPLOYEE_FORM}
           reference={reference.data}
           onSubmit={save}
