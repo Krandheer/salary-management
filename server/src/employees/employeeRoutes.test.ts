@@ -917,6 +917,122 @@ describe('salary history through PATCH /api/employees/:id', () => {
   });
 });
 
+describe('country change with a backdated salary change through PATCH /api/employees/:id', () => {
+  const patch = (app: ReturnType<typeof createTestApp>['app'], id: number, body: object) =>
+    request(app).patch(`/api/employees/${id}`).send(body);
+  const getDetail = async (app: ReturnType<typeof createTestApp>['app'], id: number) =>
+    (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+  const movedAbroad = {
+    countryCode: 'IN' as const,
+    hireDate: '2020-01-15',
+    salaryHistory: [
+      { amount: 1_850_000, effectiveDate: '2020-01-15' },
+      { amount: 2_000_000, effectiveDate: '2024-01-01' },
+    ],
+  };
+
+  it("answers 400 on salaryChange.effectiveDate when it is before the current salary's date, and changes nothing", async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, movedAbroad);
+    const before = await getDetail(app, id);
+
+    const response = await patch(app, id, {
+      country: 'JP',
+      salaryChange: { amount: 9_500_000, effectiveDate: '2022-01-01' },
+    });
+
+    expect(response.status).toBe(400);
+    expect((response.body as ApiErrorBody).error.fieldErrors).toEqual({
+      'salaryChange.effectiveDate':
+        "When the country changes, the effective date can't be before the current salary's (2024-01-01)",
+    });
+    expect(await getDetail(app, id)).toEqual(before);
+  });
+
+  it("accepts the country change dated on the current salary's date, making the new currency current", async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, movedAbroad);
+
+    const response = await patch(app, id, {
+      country: 'JP',
+      salaryChange: { amount: 9_500_000, effectiveDate: '2024-01-01' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body as EmployeeDetail).toMatchObject({
+      country: 'JP',
+      currency: 'JPY',
+      currentSalary: 9_500_000,
+    });
+  });
+});
+
+describe('rehire hire-date rule on PATCH /api/employees/:id', () => {
+  const patch = (app: ReturnType<typeof createTestApp>['app'], id: number, body: object) =>
+    request(app).patch(`/api/employees/${id}`).send(body);
+  const getDetail = async (app: ReturnType<typeof createTestApp>['app'], id: number) =>
+    (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+  const email = 'asha.rao@acme.example';
+
+  function insertRehire(db: ReturnType<typeof createTestApp>['db']): number {
+    insertEmployee(db, {
+      email,
+      hireDate: '2020-01-15',
+      status: 'inactive',
+      exitDate: '2024-06-01',
+    });
+    return insertEmployee(db, { email, hireDate: '2025-01-01' });
+  }
+
+  it('answers 400 on hireDate when a rehire hire date moves onto or before the previous exit date', async () => {
+    const { app, db } = createTestApp();
+    const rehireId = insertRehire(db);
+    const before = await getDetail(app, rehireId);
+
+    const responses = [
+      await patch(app, rehireId, { hireDate: '2021-01-01' }),
+      await patch(app, rehireId, { hireDate: '2024-06-01' }),
+    ];
+
+    for (const response of responses) {
+      expect(response.status).toBe(400);
+      expect((response.body as ApiErrorBody).error.fieldErrors).toEqual({
+        hireDate: 'Hire date must be after the previous exit date (2024-06-01)',
+      });
+    }
+    expect(await getDetail(app, rehireId)).toEqual(before);
+  });
+
+  it('accepts a rehire hire date moved earlier but still after the previous exit date', async () => {
+    const { app, db } = createTestApp();
+    const rehireId = insertRehire(db);
+
+    const response = await patch(app, rehireId, { hireDate: '2024-06-02' });
+
+    expect(response.status).toBe(200);
+    expect((response.body as EmployeeDetail).hireDate).toBe('2024-06-02');
+  });
+
+  it("answers 400 on hireDate when the email changes to an inactive record's whose exit is after the hire date", async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, {
+      email,
+      hireDate: '2020-01-15',
+      status: 'inactive',
+      exitDate: '2024-06-01',
+    });
+    const otherId = insertEmployee(db, { email: 'bob@acme.example', hireDate: '2019-01-01' });
+
+    const response = await patch(app, otherId, { email: 'Asha.Rao@acme.example' });
+
+    expect(response.status).toBe(400);
+    expect((response.body as ApiErrorBody).error.fieldErrors).toEqual({
+      hireDate: 'Hire date must be after the previous exit date (2024-06-01)',
+    });
+    expect((await getDetail(app, otherId)).email).toBe('bob@acme.example');
+  });
+});
+
 describe('malformed JSON request body', () => {
   it('answers 400 VALIDATION_FAILED instead of a server error', async () => {
     const { app } = createTestApp();

@@ -49,7 +49,7 @@ function snapshotOf(entries: Record<string, Partial<ImportMatch>>): ImportSnapsh
   return new Map(
     Object.entries(entries).map(([email, match]) => [
       email,
-      { active: null, latestInactive: null, ...match },
+      { active: null, inactive: [], ...match },
     ]),
   );
 }
@@ -172,7 +172,7 @@ describe('classifyImportRows: rows for active employees', () => {
       snapshotOf({
         [EMAIL]: {
           active: anExisting(),
-          latestInactive: anExisting({ id: 7, exitDate: '2019-01-01' }),
+          inactive: [anExisting({ id: 7, exitDate: '2019-01-01' })],
         },
       }),
     );
@@ -181,15 +181,87 @@ describe('classifyImportRows: rows for active employees', () => {
   });
 });
 
+describe('classifyImportRows: rows for a rehired person', () => {
+  const earlierEmployment = anExisting({ id: 12, exitDate: '2024-06-01' });
+  const rehire = anExisting({
+    id: 50,
+    fields: someFields({
+      jobTitle: 'Staff Engineer',
+      hireDate: '2025-01-01',
+      annualSalary: 120_000,
+    }),
+    earliestSalaryDate: '2025-01-01',
+  });
+  const rehired = snapshotOf({ [EMAIL]: { active: rehire, inactive: [earlierEmployment] } });
+
+  it('counts a row equal to the earlier inactive record as unchanged instead of updating the rehire', () => {
+    const plan = classifyImportRows([aValidRow()], rehired);
+
+    expect(plan.preview.totals).toEqual({ create: 0, update: 0, unchanged: 1, error: 0 });
+    expect(plan.operations).toEqual([]);
+  });
+
+  it('rejects a changed hire date on or before the exit date of the latest inactive record', () => {
+    const plan = classifyImportRows(
+      [aValidRow({ jobTitle: 'Staff Engineer', hireDate: '2021-01-01', annualSalary: 120_000 }, 3)],
+      rehired,
+    );
+
+    expect(plan.preview.errors).toEqual([
+      {
+        row: 3,
+        email: EMAIL,
+        messages: ['Hire Date: Hire date must be after the previous exit date (2024-06-01)'],
+      },
+    ]);
+    expect(plan.operations).toEqual([]);
+  });
+
+  it('rejects a changed row for the earlier employment rather than overwriting the rehire', () => {
+    const plan = classifyImportRows([aValidRow({ jobTitle: 'Lead' })], rehired);
+
+    expect(plan.preview.totals).toEqual({ create: 0, update: 0, unchanged: 0, error: 1 });
+    expect(plan.operations).toEqual([]);
+  });
+
+  it('updates the rehire when the changed hire date stays after the previous exit date', () => {
+    const plan = classifyImportRows(
+      [aValidRow({ jobTitle: 'Staff Engineer', hireDate: '2024-06-02', annualSalary: 120_000 })],
+      rehired,
+    );
+
+    expect(plan.preview.updates[0]!.changes).toEqual([
+      { field: 'Hire Date', from: '2025-01-01', to: '2024-06-02' },
+    ]);
+    expect(plan.operations[0]).toMatchObject({ kind: 'update', employeeId: 50 });
+  });
+});
+
 describe('classifyImportRows: rows for inactive employees', () => {
   const inactive = anExisting({ id: 12, exitDate: '2024-05-01' });
-  const onlyInactive = snapshotOf({ [EMAIL]: { latestInactive: inactive } });
+  const onlyInactive = snapshotOf({ [EMAIL]: { inactive: [inactive] } });
 
   it('counts a row equal to the most recent inactive record as unchanged', () => {
     const plan = classifyImportRows([aValidRow()], onlyInactive);
 
     expect(plan.preview.totals).toEqual({ create: 0, update: 0, unchanged: 1, error: 0 });
     expect(plan.operations).toEqual([]);
+  });
+
+  it('counts a row equal to an older inactive record as unchanged, not only the most recent one', () => {
+    const latest = anExisting({
+      id: 30,
+      fields: someFields({ jobTitle: 'Lead', hireDate: '2025-01-01' }),
+      earliestSalaryDate: '2025-01-01',
+      exitDate: '2026-01-01',
+    });
+
+    const plan = classifyImportRows(
+      [aValidRow()],
+      snapshotOf({ [EMAIL]: { inactive: [latest, inactive] } }),
+    );
+
+    expect(plan.preview.totals).toEqual({ create: 0, update: 0, unchanged: 1, error: 0 });
   });
 
   it('creates a rehire linked to the inactive record when the hire date is after its exit date', () => {

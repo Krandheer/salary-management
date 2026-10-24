@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import type {
   CountryInsights,
   CountryJobTitleInsights,
+  EmployeeListPage,
   OrganisationComparison,
 } from '@acme/contracts';
 import { insertEmployee } from '../../test/builders.ts';
 import { createTestApp } from '../../test/testApp.ts';
-import { RATES_AS_OF, RATES_SOURCE, toUsdRates } from '../reference/referenceData.ts';
+import { currencyFor, RATES_AS_OF, RATES_SOURCE, toUsdRates } from '../reference/referenceData.ts';
 
 type TestApp = ReturnType<typeof createTestApp>;
 
@@ -180,6 +181,61 @@ describe('GET /api/insights/countries', () => {
         headcount: 1,
         min: 2_500_000,
       });
+    });
+
+    it("keeps every active employee's current salary in their country's currency after mixed edits", async () => {
+      const { app, db } = createTestApp();
+      const history = (amounts: [number, string][]) =>
+        amounts.map(([amount, effectiveDate]) => ({ amount, effectiveDate }));
+      const movedBackdated = insertEmployee(db, {
+        countryCode: 'IN',
+        salaryHistory: history([
+          [1_850_000, '2020-01-15'],
+          [2_000_000, '2024-01-01'],
+        ]),
+      });
+      const movedToday = insertEmployee(db, { countryCode: 'US' });
+      const raisedBackdated = insertEmployee(db, {
+        countryCode: 'CA',
+        salaryHistory: history([
+          [80_000, '2020-01-15'],
+          [90_000, '2024-01-01'],
+        ]),
+      });
+      const movedOnCurrentDate = insertEmployee(db, {
+        countryCode: 'GB',
+        salaryHistory: history([
+          [50_000, '2020-01-15'],
+          [55_000, '2023-03-01'],
+        ]),
+      });
+      const edits: [number, object][] = [
+        [
+          movedBackdated,
+          { country: 'JP', salaryChange: { amount: 9_500_000, effectiveDate: '2022-01-01' } },
+        ],
+        [movedToday, { country: 'SG', salaryChange: { amount: 120_000 } }],
+        [raisedBackdated, { salaryChange: { amount: 85_000, effectiveDate: '2022-01-01' } }],
+        [
+          movedOnCurrentDate,
+          { country: 'DE', salaryChange: { amount: 60_000, effectiveDate: '2023-03-01' } },
+        ],
+        [
+          movedToday,
+          { country: 'AU', salaryChange: { amount: 150_000, effectiveDate: '2021-01-01' } },
+        ],
+      ];
+      for (const [id, body] of edits) await request(app).patch(`/api/employees/${id}`).send(body);
+
+      const { body: list } = await request(app).get('/api/employees');
+      const { countries } = await getCountryInsights(app);
+
+      const items = (list as EmployeeListPage).items;
+      expect(items).toHaveLength(4);
+      for (const item of items) expect(item.currency).toBe(currencyFor(item.country));
+      expect(countries.map(({ country, headcount }) => [country, headcount])).toEqual(
+        ['CA', 'DE', 'IN', 'SG'].map((code) => [code, 1]),
+      );
     });
 
     it('drops a deleted employee from the figures', async () => {

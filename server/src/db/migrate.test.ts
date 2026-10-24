@@ -88,6 +88,20 @@ describe('current_salaries view', () => {
     expect(currentSalaryOf(db, id)).toBe(150);
   });
 
+  it("exposes the current entry's effective date alongside its amount and currency", () => {
+    const db = createTestDb();
+    const id = insertEmployeeRow(db, 'a@acme.example', 'active');
+    insertHistoryRow(db, id, 200, '2024-06-01');
+    insertHistoryRow(db, id, 100, '2022-06-01');
+
+    const row = db.$client
+      .prepare(
+        'SELECT amount, currency, effective_date AS effectiveDate FROM current_salaries WHERE employee_id = ?',
+      )
+      .get(id);
+    expect(row).toEqual({ amount: 200, currency: 'USD', effectiveDate: '2024-06-01' });
+  });
+
   it('has exactly one row per employee', () => {
     const db = createTestDb();
     const id = insertEmployeeRow(db, 'a@acme.example', 'active');

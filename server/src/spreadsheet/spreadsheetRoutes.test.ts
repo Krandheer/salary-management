@@ -286,7 +286,7 @@ describe('POST /api/imports/preview', () => {
     expect(countRows(db)).toEqual(before);
   });
 
-  it('compares a row for a twice-departed employee with their most recent inactive record', async () => {
+  it('counts a row equal to any inactive record of a twice-departed employee as unchanged, and judges other rows by the most recent', async () => {
     const { app, db } = createTestApp();
     const email = 'twice@acme.example';
     const record = {
@@ -301,16 +301,27 @@ describe('POST /api/imports/preview', () => {
       exitDate: '2024-06-30',
     });
     insertEmployee(db, { ...record, hireDate: '2015-02-01', exitDate: '2018-12-31' });
-    const rowFor = (hireDate: string) =>
-      anImportRow({ ...US_ROW, fullName: 'Tess Twice', email, annualSalary: 85_000, hireDate });
-    const content = await buildImportFile([rowFor('2020-01-15')]);
-    const olderRecord = await buildImportFile([rowFor('2015-02-01')]);
+    const rowFor = (hireDate: string, extra = {}) =>
+      anImportRow({
+        ...US_ROW,
+        fullName: 'Tess Twice',
+        email,
+        annualSalary: 85_000,
+        hireDate,
+        ...extra,
+      });
 
-    const latest = (await postPreview(app, content)).body as ImportPreview;
-    const older = (await postPreview(app, olderRecord)).body as ImportPreview;
+    const latest = (await postPreview(app, await buildImportFile([rowFor('2020-01-15')])))
+      .body as ImportPreview;
+    const older = (await postPreview(app, await buildImportFile([rowFor('2015-02-01')])))
+      .body as ImportPreview;
+    const olderChanged = (
+      await postPreview(app, await buildImportFile([rowFor('2015-02-01', { jobTitle: 'Lead' })]))
+    ).body as ImportPreview;
 
     expect(latest.totals.unchanged).toBe(1);
-    expect(older.errors[0]!.messages).toEqual([
+    expect(older.totals.unchanged).toBe(1);
+    expect(olderChanged.errors[0]!.messages).toEqual([
       `Work Email: Employee #${latestId} is inactive and can't be changed; a rehire needs a hire date after their exit date (2024-06-30)`,
     ]);
   });
@@ -433,6 +444,29 @@ function insertVariedEmployees(db: AppDatabase): void {
   });
 }
 
+/** A person who left and came back: the earlier record is inactive, the rehire active. */
+function insertRehiredPerson(db: AppDatabase): { earlierId: number; rehireId: number } {
+  const person = {
+    fullName: 'Rhea Return',
+    email: 'rhea@acme.example',
+    countryCode: 'US',
+  } as const;
+  const earlierId = insertEmployee(db, {
+    ...person,
+    jobTitle: 'Engineer',
+    hireDate: '2020-01-15',
+    status: 'inactive',
+    exitDate: '2024-06-01',
+  });
+  const rehireId = insertEmployee(db, {
+    ...person,
+    jobTitle: 'Staff Engineer',
+    hireDate: '2025-01-01',
+    salaryHistory: [{ amount: 120_000, effectiveDate: '2025-01-01' }],
+  });
+  return { earlierId, rehireId };
+}
+
 describe('import round trip: export, then preview the same file', () => {
   async function previewOfExport(app: Express, query: string): Promise<ImportPreview> {
     const exported = await downloadFile(app, `/api/exports/employees${query}`);
@@ -459,6 +493,21 @@ describe('import round trip: export, then preview the same file', () => {
     ] as const) {
       insertEmployee(db, { fullName, status: 'inactive', exitDate, countryCode: 'GB' });
     }
+
+    const preview = await previewOfExport(app, '?status=inactive');
+
+    expect(preview.totals).toEqual({ create: 0, update: 0, unchanged: 2, error: 0 });
+  });
+  it('finds nothing to create, update or reject in an inactive export when a person was rehired', async () => {
+    const { app, db } = createTestApp();
+    insertVariedEmployees(db);
+    insertRehiredPerson(db);
+    insertEmployee(db, {
+      fullName: 'Gone One',
+      status: 'inactive',
+      exitDate: '2023-03-31',
+      countryCode: 'GB',
+    });
 
     const preview = await previewOfExport(app, '?status=inactive');
 
@@ -811,6 +860,48 @@ describe('POST /api/imports', () => {
       { created: 0, updated: 0, unchanged: 1 },
     ]);
     expect(countRows(db)).toEqual(before);
+  });
+
+  it("leaves a rehired person's records untouched when importing an export of inactive employees", async () => {
+    const { app, db } = createTestApp({ today: IMPORT_DATE });
+    const { earlierId, rehireId } = insertRehiredPerson(db);
+    const before = [storedRecord(db, earlierId), storedRecord(db, rehireId)];
+
+    const exported = await downloadFile(app, '/api/exports/employees?status=inactive');
+    const response = await postImport(app, exported.body as Buffer, 'employees-2026-10-24.xlsx');
+
+    expect(response.status).toBe(200);
+    expect(response.body as ImportResult).toEqual({ created: 0, updated: 0, unchanged: 1 });
+    expect([storedRecord(db, earlierId), storedRecord(db, rehireId)]).toEqual(before);
+  });
+
+  it("makes the new country's currency current even when the current salary is dated on the import date", async () => {
+    const { app, db } = createTestApp({ today: IMPORT_DATE });
+    const id = insertEmployee(db, {
+      fullName: 'Tia Today',
+      email: 'tia@acme.example',
+      salaryHistory: [
+        { amount: 85_000, effectiveDate: '2020-01-15' },
+        { amount: 90_000, effectiveDate: IMPORT_DATE },
+      ],
+    });
+    const content = await buildImportFile([
+      aUsRow({
+        fullName: 'Tia Today',
+        email: 'tia@acme.example',
+        country: 'Canada',
+        currency: 'CAD',
+        annualSalary: 90_000,
+      }),
+    ]);
+
+    await postImport(app, content);
+
+    expect(await detailOf(app, id)).toMatchObject({
+      country: 'CA',
+      currency: 'CAD',
+      currentSalary: 90_000,
+    });
   });
 
   it('rejects a file-level problem with 400 and saves nothing', async () => {

@@ -242,7 +242,11 @@ describe('validateEmployeeUpdate', () => {
     hireDate: '2024-03-01',
     annualSalary: 1_850_000,
   };
-  const context = { today: TODAY, earliestSalaryDate: '2024-03-01' };
+  const context = {
+    today: TODAY,
+    earliestSalaryDate: '2024-03-01',
+    currentSalaryDate: '2024-03-01',
+  };
 
   it('keeps every field the patch leaves out and normalises the ones it changes', () => {
     const result = validateEmployeeUpdate(current, { jobTitle: '  Staff Engineer ' }, context);
@@ -497,7 +501,11 @@ describe('validateEmployeeUpdate with a dated salary change', () => {
     hireDate: '2024-03-01',
     annualSalary: 1_850_000,
   };
-  const context = { today: TODAY, earliestSalaryDate: '2024-03-01' };
+  const context = {
+    today: TODAY,
+    earliestSalaryDate: '2024-03-01',
+    currentSalaryDate: '2024-03-01',
+  };
 
   it('carries the effective date and reason of the patch into the salary change', () => {
     const result = validateEmployeeUpdate(
@@ -535,6 +543,42 @@ describe('validateEmployeeUpdate with a dated salary change', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(Object.keys(result.fieldErrors)).toEqual(['salaryChange.effectiveDate']);
+  });
+
+  it("rejects a country change dated before the current salary's effective date", () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { country: 'JP', salaryChange: { amount: 9_500_000, effectiveDate: '2025-01-01' } },
+      { ...context, currentSalaryDate: '2025-06-01' },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      fieldErrors: {
+        'salaryChange.effectiveDate':
+          "When the country changes, the effective date can't be before the current salary's (2025-06-01)",
+      },
+    });
+  });
+
+  it("accepts a country change dated on the current salary's effective date", () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { country: 'JP', salaryChange: { amount: 9_500_000, effectiveDate: '2025-06-01' } },
+      { ...context, currentSalaryDate: '2025-06-01' },
+    );
+
+    expect(result).toMatchObject({ ok: true, fields: { countryCode: 'JP' } });
+  });
+
+  it("still allows a backdated change in the same country before the current salary's date", () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { salaryChange: { amount: 1_900_000, effectiveDate: '2024-06-01' } },
+      { ...context, currentSalaryDate: '2025-06-01' },
+    );
+
+    expect(result).toMatchObject({ ok: true, salaryChange: { effectiveDate: '2024-06-01' } });
   });
 
   it('judges the effective date against a hire date moved earlier in the same patch', () => {
