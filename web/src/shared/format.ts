@@ -11,3 +11,8 @@ export function formatSalary(amount: number, currency: CurrencyCode): string {
 export function formatDate(date: IsoDate): string {
   return date;
 }
+
+/** Counts of things (employees, rows), with thousands separators. */
+export function formatCount(count: number): string {
+  return WHOLE_NUMBER.format(count);
+}

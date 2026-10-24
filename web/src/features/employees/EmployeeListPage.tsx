@@ -7,6 +7,7 @@ import { buildExportUrl } from '@/api/spreadsheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { formatCount } from '@/shared/format';
 import { PaginationBar } from '@/shared/PaginationBar';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/StateViews';
 import { useDebouncedValue } from '@/shared/useDebouncedValue';
@@ -17,7 +18,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 const FIRST_PAGE = 1;
 
 function describeTotal(total: number): string {
-  return `${total.toLocaleString('en-US')} ${total === 1 ? 'employee' : 'employees'}`;
+  return `${formatCount(total)} ${total === 1 ? 'employee' : 'employees'}`;
 }
 
 function describeNoMatch(hasFilters: boolean, isShowingInactive: boolean): string {

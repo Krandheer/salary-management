@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatCount } from '@/shared/format';
 import { PaginationBar } from '@/shared/PaginationBar';
 
 const PREVIEW_PAGE_SIZE = 50;
@@ -77,10 +78,7 @@ function ImportTotalsList({ totals }: { totals: ImportTotals }) {
         <li key={key}>
           <Badge variant="outline" className={`h-8 gap-1.5 px-3 text-sm ${colours}`}>
             <Icon aria-hidden="true" />
-            {label}{' '}
-            <span className="font-semibold tabular-nums">
-              {totals[key].toLocaleString('en-US')}
-            </span>
+            {label} <span className="font-semibold tabular-nums">{formatCount(totals[key])}</span>
           </Badge>
         </li>
       ))}

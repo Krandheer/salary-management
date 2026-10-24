@@ -9,11 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatCount } from '@/shared/format';
 import { ImportPreviewView } from './ImportPreviewView';
-
-function formatCount(count: number): string {
-  return count.toLocaleString('en-US');
-}
 
 /** An import changes employees and therefore every insight built on them. */
 async function refreshAfterImport(

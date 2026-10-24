@@ -1,9 +1,4 @@
-import type {
-  CountryUsdComparison,
-  CurrencyCode,
-  DepartmentUsdComparison,
-  OrganisationComparison,
-} from '@acme/contracts';
+import type { CurrencyCode, OrganisationComparison } from '@acme/contracts';
 import { useOrganisationComparison } from '@/api/insights';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -14,12 +9,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatSalary } from '@/shared/format';
+import { formatCount, formatSalary } from '@/shared/format';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/StateViews';
 
 const NUMERIC_CELL = 'px-3 py-2 text-right tabular-nums';
 const RATE_DECIMAL_PLACES = 6;
-const REFERENCE_CURRENCY: CurrencyCode = 'USD';
 
 function ApproximateNote() {
   return (
@@ -33,48 +27,36 @@ function ApproximateNote() {
   );
 }
 
-function CountryUsdTable({ rows }: { rows: CountryUsdComparison[] }) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="px-3">Country</TableHead>
-          <TableHead className="px-3 text-right">Headcount</TableHead>
-          <TableHead className="px-3 text-right">Average (USD)</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.country}>
-            <TableCell className="px-3 py-2">{row.countryName}</TableCell>
-            <TableCell className={NUMERIC_CELL}>{row.headcount}</TableCell>
-            <TableCell className={NUMERIC_CELL}>
-              {formatSalary(row.averageSalaryUsd, REFERENCE_CURRENCY)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
+interface UsdAverageRow {
+  key: string;
+  label: string;
+  headcount: number;
+  averageSalaryUsd: number;
 }
 
-function DepartmentUsdTable({ rows }: { rows: DepartmentUsdComparison[] }) {
+interface UsdAverageTableProps {
+  groupLabel: string;
+  currency: CurrencyCode;
+  rows: UsdAverageRow[];
+}
+
+function UsdAverageTable({ groupLabel, currency, rows }: UsdAverageTableProps) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="px-3">Department</TableHead>
+          <TableHead className="px-3">{groupLabel}</TableHead>
           <TableHead className="px-3 text-right">Headcount</TableHead>
-          <TableHead className="px-3 text-right">Average (USD)</TableHead>
+          <TableHead className="px-3 text-right">Average ({currency})</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
-          <TableRow key={row.department}>
-            <TableCell className="px-3 py-2">{row.department}</TableCell>
-            <TableCell className={NUMERIC_CELL}>{row.headcount}</TableCell>
+          <TableRow key={row.key}>
+            <TableCell className="px-3 py-2">{row.label}</TableCell>
+            <TableCell className={NUMERIC_CELL}>{formatCount(row.headcount)}</TableCell>
             <TableCell className={NUMERIC_CELL}>
-              {formatSalary(row.averageSalaryUsd, REFERENCE_CURRENCY)}
+              {formatSalary(row.averageSalaryUsd, currency)}
             </TableCell>
           </TableRow>
         ))}
@@ -113,11 +95,23 @@ function OrganisationFigures({ data }: { data: OrganisationComparison }) {
       <ApproximateNote />
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">By country</h2>
-        <CountryUsdTable rows={data.byCountry} />
+        <UsdAverageTable
+          groupLabel="Country"
+          currency={data.referenceCurrency}
+          rows={data.byCountry.map((row) => ({ ...row, key: row.country, label: row.countryName }))}
+        />
       </section>
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">By department</h2>
-        <DepartmentUsdTable rows={data.byDepartment} />
+        <UsdAverageTable
+          groupLabel="Department"
+          currency={data.referenceCurrency}
+          rows={data.byDepartment.map((row) => ({
+            ...row,
+            key: row.department,
+            label: row.department,
+          }))}
+        />
       </section>
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Exchange rates</h2>

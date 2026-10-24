@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatSalary } from './format';
+import { formatCount, formatDate, formatSalary } from './format';
 
 describe('formatSalary', () => {
   it.each([
@@ -15,5 +15,16 @@ describe('formatSalary', () => {
 describe('formatDate', () => {
   it('shows an ISO date as it is', () => {
     expect(formatDate('2026-10-24')).toBe('2026-10-24');
+  });
+});
+
+describe('formatCount', () => {
+  it.each([
+    [0, '0'],
+    [999, '999'],
+    [1_000, '1,000'],
+    [20_001, '20,001'],
+  ])('formats %i as %s', (count, expected) => {
+    expect(formatCount(count)).toBe(expected);
   });
 });
