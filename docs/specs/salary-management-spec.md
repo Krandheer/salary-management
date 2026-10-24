@@ -84,15 +84,15 @@ Seeded database, then the API, then a paginated list in the UI.
 
 ## Slice 2: Search & filter
 
--   [ ] Typing part of a name shows only employees whose full name contains that text, ignoring letter case and surrounding spaces.
--   [ ] The country filter offers the 8 countries, and choosing one shows only employees in that country.
--   [ ] The department filter offers the 10 departments, and choosing one shows only employees in that department.
--   [ ] The job title filter offers every distinct job title held by the employees currently in view, A to Z. Titles that differ only in letter case or surrounding spaces appear once.
--   [ ] Choosing a job title shows employees whose title matches it, ignoring letter case and surrounding spaces.
--   [ ] Search and filters can be combined, and the total count and page count reflect the combined result.
--   [ ] Changing the search text or any filter returns the list to page 1.
--   [ ] Shows a "No matching employees" message when nothing matches.
--   [ ] "Clear filters" empties the search, resets every filter, and shows the full list.
+-   [x] Typing part of a name shows only employees whose full name contains that text, ignoring letter case and surrounding spaces.
+-   [x] The country filter offers the 8 countries, and choosing one shows only employees in that country.
+-   [x] The department filter offers the 10 departments, and choosing one shows only employees in that department.
+-   [x] The job title filter offers every distinct job title held by the employees currently in view, A to Z. Titles that differ only in letter case or surrounding spaces appear once.
+-   [x] Choosing a job title shows employees whose title matches it, ignoring letter case and surrounding spaces.
+-   [x] Search and filters can be combined, and the total count and page count reflect the combined result.
+-   [x] Changing the search text or any filter returns the list to page 1.
+-   [x] Shows a "No matching employees" message when nothing matches.
+-   [x] "Clear filters" empties the search, resets every filter, and shows the full list.
 
 ## Slice 3: Add an employee
 

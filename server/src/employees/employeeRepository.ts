@@ -1,4 +1,4 @@
-import { asc, count, eq, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, sql, type SQL } from 'drizzle-orm';
 import type {
   CountryCode,
   CurrencyCode,
@@ -8,7 +8,7 @@ import type {
 } from '@acme/contracts';
 import type { AppDatabase } from '../db/database.ts';
 import { currentSalaries, employees } from '../db/schema.ts';
-import type { EmployeeListQuery } from './employeeListQuery.ts';
+import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
 
 interface EmployeeSummaryRow {
   id: number;
@@ -36,12 +36,24 @@ export function toEmployeeSummary(row: EmployeeSummaryRow): EmployeeSummary {
   };
 }
 
+/** The WHERE condition for the employees in view; every value is a bound parameter. */
+export function buildFilterConditions(filters: EmployeeFilters): SQL | undefined {
+  const { status, searchKey, country, department, jobTitleKey } = filters;
+  return and(
+    eq(employees.status, status),
+    searchKey ? sql`instr(${employees.nameKey}, ${searchKey}) > 0` : undefined,
+    country ? eq(employees.countryCode, country) : undefined,
+    department ? eq(employees.department, department) : undefined,
+    jobTitleKey ? eq(employees.jobTitleKey, jobTitleKey) : undefined,
+  );
+}
+
 export class EmployeeRepository {
   constructor(private readonly db: AppDatabase) {}
 
   listPage(query: EmployeeListQuery, pageSize: number): EmployeeListPage {
-    const isInStatus = eq(employees.status, query.status);
-    const total = this.countEmployees(isInStatus);
+    const isInView = buildFilterConditions(query);
+    const total = this.countEmployees(isInView);
     const items = this.db
       .select({
         id: employees.id,
@@ -56,7 +68,7 @@ export class EmployeeRepository {
       })
       .from(employees)
       .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
-      .where(isInStatus)
+      .where(isInView)
       .orderBy(asc(employees.nameKey), asc(employees.id))
       .limit(pageSize)
       .offset((query.page - 1) * pageSize)
@@ -72,7 +84,16 @@ export class EmployeeRepository {
     };
   }
 
-  private countEmployees(condition: SQL): number {
+  /** One row per employee in view, ignoring the job title filter, so the job title choices stay complete. */
+  listJobTitleSpellings(filters: EmployeeFilters): { jobTitleKey: string; jobTitle: string }[] {
+    return this.db
+      .select({ jobTitleKey: employees.jobTitleKey, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(buildFilterConditions({ ...filters, jobTitleKey: null }))
+      .all();
+  }
+
+  private countEmployees(condition: SQL | undefined): number {
     const row = this.db.select({ total: count() }).from(employees).where(condition).get();
     return row?.total ?? 0;
   }

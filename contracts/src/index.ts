@@ -59,3 +59,18 @@ export interface EmployeeListPage {
   total: number;
   totalPages: number;
 }
+
+/** Query-string parameters of the employee list; every one is optional. */
+export interface EmployeeListParams {
+  search?: string;
+  country?: CountryCode;
+  department?: string;
+  jobTitle?: string;
+  status?: EmployeeStatus;
+  page?: number;
+}
+
+/** The distinct job titles (one display spelling each, A to Z) of the employees in view. */
+export interface JobTitleOptions {
+  jobTitles: string[];
+}

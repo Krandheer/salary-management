@@ -213,7 +213,7 @@ describe('EmployeeListPage search and filters', () => {
 
     expect(await screen.findByText('Filtered Person')).toBeInTheDocument();
     const searchRequests = listCalls().filter((path) => path.includes('search='));
-    expect(searchRequests).toEqual(['/api/employees?search=ana']);
+    expect(searchRequests).toEqual(['/api/employees?search=ana&page=1']);
   });
 
   it('requests the chosen country, department and job title', async () => {
@@ -235,6 +235,7 @@ describe('EmployeeListPage search and filters', () => {
         country: 'IN',
         department: 'Finance',
         jobTitle: 'Analyst',
+        page: '1',
       });
     });
   });
@@ -263,7 +264,7 @@ describe('EmployeeListPage search and filters', () => {
     await user.click(screen.getByRole('combobox', { name: 'Country' }));
     await user.click(screen.getByRole('option', { name: 'India' }));
 
-    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?country=IN'));
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?country=IN&page=1'));
   });
 
   it('returns to page 1 when the search text changes', async () => {
@@ -275,7 +276,7 @@ describe('EmployeeListPage search and filters', () => {
 
     await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'ana');
 
-    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?search=ana'));
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?search=ana&page=1'));
   });
 
   it('shows "No matching employees" when filters match nothing, instead of "No employees yet"', async () => {
@@ -306,7 +307,7 @@ describe('EmployeeListPage search and filters', () => {
     expect(await screen.findByText('Asha Rao')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search name' })).toHaveValue('');
     expect(screen.getByRole('combobox', { name: 'Country' })).toHaveTextContent('All countries');
-    expect(listCalls().at(-1)).toBe('/api/employees');
+    expect(listCalls().at(-1)).toBe('/api/employees?page=1');
   });
 
   it('keeps the filters visible when the list fails to load', async () => {
