@@ -1,7 +1,9 @@
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import { ImportFileError } from '../shared/errors.ts';
 import { normalizeKey } from '../shared/text.ts';
 import { TEMPLATE_COLUMNS } from './templateColumns.ts';
+import { openFirstWorksheet, type FirstWorksheet } from './xlsx/workbookPackage.ts';
+import { readWorksheetRows, type WorksheetRow } from './xlsx/worksheetRows.ts';
 import { checkUncompressedSize } from './zipSizeGuard.ts';
 
 /** A cell as the import reads it: rich text, hyperlinks and formulas reduced to plain values. */
@@ -16,11 +18,17 @@ export interface RawImportRow {
 export const MAX_IMPORT_ROWS = 20_000;
 const MAX_IMPORT_MEGABYTES = 10;
 export const MAX_IMPORT_BYTES = MAX_IMPORT_MEGABYTES * 1024 * 1024;
-const MAX_UNCOMPRESSED_MEGABYTES = 100;
-/** A full 20,000-row workbook unzips to about 10 MB; far beyond that is a zip bomb. */
+/**
+ * Measured: a 20,000-row export of seeded employees unzips to 8.4 MiB (8,783,316 bytes), and the
+ * review measured 9.4 MB for its 20,000-row template file. 24 MiB is about 2.5 times the larger
+ * figure: room for longer values and the markup Excel adds when it saves, and a firm bound on
+ * the shared strings the reader holds and on the bytes it unzips.
+ */
+const MAX_UNCOMPRESSED_MEGABYTES = 24;
 export const MAX_UNCOMPRESSED_BYTES = MAX_UNCOMPRESSED_MEGABYTES * 1024 * 1024;
 
 const HEADER_ROW_NUMBER = 1;
+const NO_CELLS: ReadonlyMap<number, ExcelJS.CellValue> = new Map();
 const XLSX_FILE_NAME = /\.xlsx$/i;
 const EXPECTED_HEADER_KEYS = TEMPLATE_COLUMNS.map(({ header }) => normalizeKey(header));
 
@@ -65,7 +73,7 @@ function unreadableWorkbookError(): ImportFileError {
   return new ImportFileError('INVALID_FILE', 'The file could not be read as an Excel workbook');
 }
 
-/** exceljs unzips the whole workbook into memory, so its unzipped size is capped first. */
+/** Checked before any part is parsed: it bounds both the unzipping and the strings held in memory. */
 async function rejectIfTooLargeUncompressed(content: Buffer): Promise<void> {
   const check = await checkUncompressedSize(content, MAX_UNCOMPRESSED_BYTES);
   if (check === 'unreadable') throw unreadableWorkbookError();
@@ -77,27 +85,31 @@ async function rejectIfTooLargeUncompressed(content: Buffer): Promise<void> {
   }
 }
 
-async function loadFirstSheet(content: Buffer): Promise<ExcelJS.Worksheet> {
-  const workbook = new ExcelJS.Workbook();
+async function openFirstSheet(content: Buffer): Promise<FirstWorksheet> {
+  let sheet: FirstWorksheet | null;
   try {
-    await workbook.xlsx.load(content as unknown as ExcelJS.Buffer);
+    sheet = await openFirstWorksheet(content);
   } catch {
     throw unreadableWorkbookError();
   }
-  const [firstSheet] = workbook.worksheets;
-  if (!firstSheet) throw new ImportFileError('INVALID_FILE', 'The workbook has no sheets');
-  return firstSheet;
+  if (!sheet) throw new ImportFileError('INVALID_FILE', 'The workbook has no sheets');
+  return sheet;
 }
 
-function rejectUnlessTemplateHeaders(sheet: ExcelJS.Worksheet): void {
-  const headerRow = sheet.getRow(HEADER_ROW_NUMBER);
-  const lastColumn = Math.max(headerRow.cellCount, EXPECTED_HEADER_KEYS.length);
-  const headerKeys = Array.from({ length: lastColumn }, (_, index) =>
-    headerKeyOf(readCellValue(headerRow.getCell(index + 1).value)),
-  );
+function cellAt(cells: ReadonlyMap<number, ExcelJS.CellValue>, column: number): RawCellValue {
+  return readCellValue(cells.get(column) ?? null);
+}
+
+/** The template headers in order, and nothing but blanks to their right. */
+function rejectUnlessTemplateHeaders(headerCells: ReadonlyMap<number, ExcelJS.CellValue>): void {
   const isTemplateOrder =
-    EXPECTED_HEADER_KEYS.every((expected, index) => headerKeys[index] === expected) &&
-    headerKeys.slice(EXPECTED_HEADER_KEYS.length).every((extra) => extra === '');
+    EXPECTED_HEADER_KEYS.every(
+      (expected, index) => headerKeyOf(cellAt(headerCells, index + 1)) === expected,
+    ) &&
+    [...headerCells.keys()].every(
+      (column) =>
+        column <= EXPECTED_HEADER_KEYS.length || headerKeyOf(cellAt(headerCells, column)) === '',
+    );
   if (!isTemplateOrder) {
     const expected = TEMPLATE_COLUMNS.map(({ header }) => header).join(', ');
     throw new ImportFileError(
@@ -107,39 +119,67 @@ function rejectUnlessTemplateHeaders(sheet: ExcelJS.Worksheet): void {
   }
 }
 
-function readTemplateCells(row: ExcelJS.Row): RawCellValue[] {
-  return TEMPLATE_COLUMNS.map((_, index) => readCellValue(row.getCell(index + 1).value));
+function readTemplateCells(cells: ReadonlyMap<number, ExcelJS.CellValue>): RawCellValue[] {
+  return TEMPLATE_COLUMNS.map((_, index) => cellAt(cells, index + 1));
 }
 
-/** The non-blank data rows; stops as soon as the row limit is passed, before any row is judged. */
-function readDataRows(sheet: ExcelJS.Worksheet): RawImportRow[] {
-  const rows: RawImportRow[] = [];
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === HEADER_ROW_NUMBER) return;
-    const cells = readTemplateCells(row);
-    if (cells.every(isBlankCell)) return;
-    if (rows.length === MAX_IMPORT_ROWS) {
-      throw new ImportFileError(
-        'TOO_MANY_ROWS',
-        `The file has more than ${MAX_IMPORT_ROWS.toLocaleString('en-US')} data rows`,
-      );
-    }
-    rows.push({ rowNumber, cells });
-  });
-  if (rows.length === 0) throw new ImportFileError('NO_DATA_ROWS', 'The file has no data rows');
-  return rows;
+function tooManyRowsError(): ImportFileError {
+  return new ImportFileError(
+    'TOO_MANY_ROWS',
+    `The file has more than ${MAX_IMPORT_ROWS.toLocaleString('en-US')} data rows`,
+  );
 }
 
 /**
- * Reads the first sheet of an uploaded .xlsx into raw rows. Throws `ImportFileError` when the
- * file as a whole can't be imported: wrong type, too large (as uploaded or once unzipped), wrong
- * header row, too many rows or none.
+ * Judges the sheet's rows as they stream past: the header row first, then each non-blank data
+ * row, throwing as soon as the row limit is passed so the rest of the file is never read.
+ */
+class ImportRowCollector {
+  private readonly rows: RawImportRow[] = [];
+  private isHeaderChecked = false;
+
+  add(row: WorksheetRow): void {
+    const isHeaderRow = row.rowNumber === HEADER_ROW_NUMBER;
+    if (!this.isHeaderChecked) this.checkHeader(isHeaderRow ? row.cells : NO_CELLS);
+    if (isHeaderRow) return;
+    const cells = readTemplateCells(row.cells);
+    if (cells.every(isBlankCell)) return;
+    if (this.rows.length === MAX_IMPORT_ROWS) throw tooManyRowsError();
+    this.rows.push({ rowNumber: row.rowNumber, cells });
+  }
+
+  finish(): RawImportRow[] {
+    if (!this.isHeaderChecked) this.checkHeader(NO_CELLS);
+    if (this.rows.length === 0)
+      throw new ImportFileError('NO_DATA_ROWS', 'The file has no data rows');
+    return this.rows;
+  }
+
+  private checkHeader(headerCells: ReadonlyMap<number, ExcelJS.CellValue>): void {
+    rejectUnlessTemplateHeaders(headerCells);
+    this.isHeaderChecked = true;
+  }
+}
+
+async function readSheetRows(sheet: FirstWorksheet): Promise<RawImportRow[]> {
+  const collector = new ImportRowCollector();
+  try {
+    await readWorksheetRows(sheet.entry, sheet.values, (row) => collector.add(row));
+  } catch (error) {
+    throw error instanceof ImportFileError ? error : unreadableWorkbookError();
+  }
+  return collector.finish();
+}
+
+/**
+ * Reads the first sheet of an uploaded .xlsx into raw rows. The sheet is streamed row by row and
+ * no workbook model is built, so memory stays bounded by the rows kept (at most 20,000) whatever
+ * the file holds. Throws `ImportFileError` when the file as a whole can't be imported: wrong
+ * type, too large (as uploaded or once unzipped), wrong header row, too many rows or none.
  */
 export async function readImportFile(content: Buffer, fileName: string): Promise<RawImportRow[]> {
   rejectUnlessXlsxName(fileName);
   rejectIfTooLarge(content);
   await rejectIfTooLargeUncompressed(content);
-  const sheet = await loadFirstSheet(content);
-  rejectUnlessTemplateHeaders(sheet);
-  return readDataRows(sheet);
+  return readSheetRows(await openFirstSheet(content));
 }

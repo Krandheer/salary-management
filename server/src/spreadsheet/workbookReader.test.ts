@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { anImportRow, buildImportFile, TEMPLATE_HEADERS } from '../../test/importWorkbook.ts';
-import { rewritePart, withDeclaredUncompressedSizes } from '../../test/zipArchive.ts';
+import { readPart, rewritePart, withDeclaredUncompressedSizes } from '../../test/zipArchive.ts';
 import { ImportFileError } from '../shared/errors.ts';
 import {
   type RawImportRow,
@@ -226,6 +226,25 @@ describe('readImportFile: the data rows', () => {
     expect(rows[1]!.cells[3]).toBeNull();
   });
 
+  it('leaves the phonetic guide out of an inline string and reads the rest of the sheet', async () => {
+    const withPhoneticGuide = await rewritePart(
+      await buildImportFile([anImportRow(), anImportRow({ fullName: 'Bela Roy' })]),
+      FIRST_SHEET_PART,
+      (xml) =>
+        xml.replace(
+          /<c r="C2"[^>]*>.*?<\/c>/,
+          '<c r="C2" t="inlineStr"><is><t>Engineer</t><rPh sb="0" eb="1"><t>エンジニア</t></rPh></is></c>',
+        ),
+    );
+
+    const rows = await readImportFile(withPhoneticGuide, FILE_NAME);
+
+    expect(rows.map((row) => row.cells.slice(0, 4))).toEqual([
+      ['Asha Rao', 'asha.rao@acme.example', 'Engineer', 'Engineering'],
+      ['Bela Roy', 'asha.rao@acme.example', 'Software Engineer', 'Engineering'],
+    ]);
+  });
+
   it('reads the first tab in workbook order, whichever part stores it', async () => {
     const content = await buildImportFile([anImportRow()], {
       otherSheets: [[TEMPLATE_HEADERS, anImportRow({ fullName: 'Bela Roy' })]],
@@ -273,18 +292,60 @@ function formatEveryCellKind(sheet: ExcelJS.Worksheet): void {
   sheet.getCell('H6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
 }
 
-async function aWorkbookOfEveryCellKind(options: {
-  useSharedStrings: boolean;
-  date1904: boolean;
-}): Promise<Buffer> {
+const SHARED_STRINGS_PART = 'xl/sharedStrings.xml';
+
+async function aWorkbookOfEveryCellKind(options: { date1904: boolean }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.properties.date1904 = options.date1904;
   const sheet = workbook.addWorksheet('Employees');
   sheet.addRow(TEMPLATE_HEADERS);
   for (const row of rowsOfEveryCellKind()) sheet.addRow(row);
   formatEveryCellKind(sheet);
-  const content = await workbook.xlsx.writeBuffer({ useSharedStrings: options.useSharedStrings });
-  return Buffer.from(content);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+function sharedStringEntries(sharedStringsXml: string): string[] {
+  return [...sharedStringsXml.matchAll(/<si>(.*?)<\/si>/gs)].map((match) => match[1]!);
+}
+
+/** The same workbook with every shared-string cell written as an inline string instead. */
+async function withStringsInline(content: Buffer): Promise<Buffer> {
+  const entries = sharedStringEntries(await readPart(content, SHARED_STRINGS_PART));
+  return rewritePart(content, FIRST_SHEET_PART, (xml) =>
+    xml.replace(
+      /<c ([^>]*?)t="s"([^>]*)><v>(\d+)<\/v><\/c>/g,
+      (_, before: string, after: string, index: string) =>
+        `<c ${before}t="inlineStr"${after}><is>${entries[Number(index)]}</is></c>`,
+    ),
+  );
+}
+
+/** Rows 7 and 8 in shapes other writers produce: shared formulas, cells without references, escapes, phonetic guides. */
+async function withHandWrittenRows(content: Buffer): Promise<Buffer> {
+  const firstAddedString = sharedStringEntries(await readPart(content, SHARED_STRINGS_PART)).length;
+  const withStrings = await rewritePart(content, SHARED_STRINGS_PART, (xml) =>
+    xml.replace(
+      '</sst>',
+      '<si><t>line_x000D_break</t></si>' +
+        '<si><t>漢字</t><rPh sb="0" eb="2"><t>かんじ</t></rPh><phoneticPr fontId="1"/></si></sst>',
+    ),
+  );
+  const rows =
+    '<row r="7">' +
+    `<c r="A7" t="s"><v>${firstAddedString}</v></c>` +
+    '<c r="B7"><f t="shared" ref="B7:B8" si="0">C7*2</f><v>4</v></c>' +
+    '<c t="str"><v>&amp;lt;tag&amp;gt;</v></c>' +
+    '<c r="E7" t="d"><v>2021-03-15</v></c>' +
+    '<c t="inlineStr"><is><t>inline</t></is></c>' +
+    `<c r="G7" t="s"><v>${firstAddedString + 1}</v></c>` +
+    '<c r="H7" s="1"><v>44270</v></c>' +
+    '<c r="I7" t="inlineStr"><is><r><t>Ra</t></r><r><rPr><b/></rPr><t>o_x0041_</t></r></is></c>' +
+    '</row>' +
+    '<row r="8"><c r="A8" t="inlineStr"><is><t>  </t></is></c>' +
+    '<c r="B8"><f t="shared" si="0"/><v>6</v></c><c r="C8" s="1"/></row>';
+  return rewritePart(withStrings, FIRST_SHEET_PART, (xml) =>
+    xml.replace('</sheetData>', `${rows}</sheetData>`),
+  );
 }
 
 /** The rows as exceljs's full workbook model presents them: the reading every import has relied on. */
@@ -302,18 +363,34 @@ async function readThroughTheFullWorkbookModel(content: Buffer): Promise<RawImpo
 }
 
 describe('readImportFile: cell values match the full workbook model', () => {
-  it.each([
-    { label: 'shared strings', useSharedStrings: true, date1904: false },
-    { label: 'inline strings', useSharedStrings: false, date1904: false },
-    { label: 'the 1904 date system', useSharedStrings: true, date1904: true },
-  ])('reads every kind of cell as the full model does, with $label', async (options) => {
-    const content = await aWorkbookOfEveryCellKind(options);
+  async function expectTheFullModelsRows(content: Buffer, rowNumbers: number[]): Promise<void> {
     const expected = await readThroughTheFullWorkbookModel(content);
 
     const rows = await readImportFile(content, FILE_NAME);
 
-    expect(expected.map((row) => row.rowNumber)).toEqual([2, 3, 6]);
+    expect(expected.map((row) => row.rowNumber)).toEqual(rowNumbers);
     expect(rows).toEqual(expected);
+  }
+
+  it('reads every kind of cell as the full model does, with shared strings', async () => {
+    await expectTheFullModelsRows(await aWorkbookOfEveryCellKind({ date1904: false }), [2, 3, 6]);
+  });
+
+  it('reads every kind of cell as the full model does, with inline strings', async () => {
+    const content = await withStringsInline(await aWorkbookOfEveryCellKind({ date1904: false }));
+
+    expect(await readPart(content, FIRST_SHEET_PART)).toContain('<is><r>');
+    await expectTheFullModelsRows(content, [2, 3, 6]);
+  });
+
+  it('reads every kind of cell as the full model does, in the 1904 date system', async () => {
+    await expectTheFullModelsRows(await aWorkbookOfEveryCellKind({ date1904: true }), [2, 3, 6]);
+  });
+
+  it('reads shared formulas, unreferenced cells, escapes and phonetic text as the full model does', async () => {
+    const content = await withHandWrittenRows(await aWorkbookOfEveryCellKind({ date1904: false }));
+
+    await expectTheFullModelsRows(content, [2, 3, 6, 7, 8]);
   });
 });
 

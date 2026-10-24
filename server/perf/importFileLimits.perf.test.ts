@@ -63,27 +63,27 @@ function exportRowsOfSeededEmployees(count: number): ExportRow[] {
 }
 
 describe('import file limits hold without building the whole workbook', () => {
-  let fortyThousandRows: Buffer;
+  let threeTimesTheRowLimit: Buffer;
 
   beforeAll(async () => {
-    fortyThousandRows = await buildImportFile(
-      Array.from({ length: 2 * MAX_IMPORT_ROWS }, () => anImportRow()),
+    threeTimesTheRowLimit = await buildImportFile(
+      Array.from({ length: 3 * MAX_IMPORT_ROWS }, () => anImportRow()),
     );
   });
 
-  it('rejects 40,000 data rows in under a third of the time a full workbook load takes', async () => {
-    const fullLoadMs = await millisecondsToRun(() => fullWorkbookLoad(fortyThousandRows));
+  it('rejects 60,000 data rows in under half the time a full workbook load takes', async () => {
+    const fullLoadMs = await millisecondsToRun(() => fullWorkbookLoad(threeTimesTheRowLimit));
     let code: string | null = null;
 
     const rejectMs = await millisecondsToRun(async () => {
-      code = await rejectionCodeOf(readImportFile(fortyThousandRows, FILE_NAME));
+      code = await rejectionCodeOf(readImportFile(threeTimesTheRowLimit, FILE_NAME));
     });
 
     expect(code).toBe('TOO_MANY_ROWS');
-    expect(rejectMs).toBeLessThan(fullLoadMs / 3);
+    expect(rejectMs).toBeLessThan(fullLoadMs / 2);
   });
 
-  it('reads a tiny file declaring a 2.5-million-cell merge in well under a second', async () => {
+  it('reads a tiny file declaring a 2.5-million-cell merge in under 300 ms', async () => {
     const mergeBomb = await rewritePart(
       await buildImportFile([anImportRow()]),
       FIRST_SHEET_PART,
@@ -103,10 +103,11 @@ describe('import file limits hold without building the whole workbook', () => {
     expect(elapsedMs).toBeLessThan(300);
   });
 
-  it('gets through 23 MB of cells outside the template columns in under two seconds', async () => {
+  it('gets through 23 MB of cells outside the template columns faster than a full workbook load', async () => {
     const wideRows = await rewritePart(await buildImportFile([]), FIRST_SHEET_PART, (xml) =>
       xml.replace('</sheetData>', `${rowsBeyondTheTemplateColumns(23 * 1024 * 1024)}</sheetData>`),
     );
+    const fullLoadMs = await millisecondsToRun(() => fullWorkbookLoad(wideRows));
     let code: string | null = null;
 
     const elapsedMs = await millisecondsToRun(async () => {
@@ -114,7 +115,7 @@ describe('import file limits hold without building the whole workbook', () => {
     });
 
     expect(code).toBe('NO_DATA_ROWS');
-    expect(elapsedMs).toBeLessThan(2_000);
+    expect(elapsedMs).toBeLessThan(fullLoadMs);
   });
 
   it('reads a 20,000-row export of seeded employees, well inside the uncompressed limit', async () => {

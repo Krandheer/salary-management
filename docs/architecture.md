@@ -41,7 +41,7 @@ flowchart TB
 
         subgraph Spreadsheet["spreadsheet/"]
             SheetRoutes["routes + multer"] --> ImpService["ImportService / ExportService"]
-            ImpService --> Pipeline["workbookReader, zipSizeGuard,<br/>importRowParser, importClassifier (pure),<br/>workbookWriter"]
+            ImpService --> Pipeline["workbookReader (streams xlsx/), zipSizeGuard,<br/>importRowParser, importClassifier (pure),<br/>workbookWriter"]
         end
 
         Reference["reference/<br/>countries, departments, rates"]
@@ -84,7 +84,7 @@ sequenceDiagram
 
     HR->>UI: choose .xlsx file
     UI->>API: multipart upload (multer, 10 MB cap)
-    API->>P: readImportFile (name, size, zip-bomb guard, header, row cap)
+    API->>P: readImportFile (name, size, zip-bomb guard, then the first sheet streamed row by row: header, row cap)
     P->>P: parseImportRow per row, classifyImportRows
     P->>DB: loadImportSnapshot (one read query)
     API-->>UI: ImportPreview (totals, errors, updates, creates)
@@ -127,9 +127,10 @@ Rows are matched to existing employees by email. A row identical to any stored r
 | **Rehire instead of restore** | Re-adding a former employee creates a new record linked by email, so the earlier employment and its history stay intact. A partial unique index (`email WHERE status = 'active'`) enforces one active record per email in the database itself; the service checks first for a friendly `EMAIL_TAKEN`. | Two records for one person; the UI shows linked employments. |
 | **Stateless re-upload import** | No server-side session, temp storage or expiring tokens. Confirm re-validates the file against the data as it is now, so a stale preview can never be applied blindly. | The file is uploaded and parsed twice (about 1 s each at 10,000 rows). |
 | **All-or-nothing transaction** | An import that half-applies is worse than one that fails. A single `db.transaction`; any error row or failed write rolls everything back. The rollback test uses a real SQLite trigger, not a mock. | A whole file is rejected for a single bad row. HR fixes the row and retries. |
-| **Zip-bomb guard** (`zipSizeGuard.ts`) | An `.xlsx` is a zip. Upload is capped at 10 MB, but a small file can inflate enormously. Before exceljs loads it, the central directory is read and each entry is streamed with a byte counter; over 100 MB uncompressed is rejected. Declared sizes cannot be trusted (jszip reads them as signed 32-bit), hence the streamed count. A 20,000-row workbook inflates to about 9.4 MB. | About 50 ms extra per upload; relies on jszip internals for the fast declared-size sum. |
+| **Zip-bomb guard** (`zipSizeGuard.ts`) | An `.xlsx` is a zip. Upload is capped at 10 MB, but a small file can inflate enormously. Before any part is parsed, the central directory is read and each entry is streamed with a byte counter; over 24 MB uncompressed is rejected. Declared sizes cannot be trusted (jszip reads them as signed 32-bit), hence the streamed count. The limit is about 2.5 times a full 20,000-row file (a seeded export unzips to 8.4 MB; the review measured 9.4 MB for a template file). | About 50 ms extra per upload; relies on jszip internals for the fast declared-size sum. |
+| **Streamed sheet reading, no workbook model** (`spreadsheet/xlsx/`) | exceljs's full loader builds an object per cell for every sheet before anything can be checked, at roughly 40 bytes of memory per byte of sheet XML. A 9.9 MB upload with 380,000 rows peaked at 1.43 GB RSS and took 10.6 s before the row cap ran. A 6.5 KB file with one `<mergeCell ref="J2:Z100000"/>` reached 864 MB, because merges are expanded cell by cell. Even a legitimate 20,000-row file cost 352 MB. The 512 MB Render instance could be killed by one request. The reader now opens the zip with jszip (the same view the guard checked) and parses only the workbook, its relationships, the styles, the shared strings and the first sheet, with saxes (the XML parser exceljs uses). The sheet is streamed row by row, and reading stops at the 20,001st data row. Cell values follow exceljs's own rules (shared and inline strings, rich text, formula results, date formats, the 1904 date system), and parity tests compare them with the full model. exceljs's own streaming reader was not used: it loses inline rich text and the types of formula results, writes sheets to temp files, and unzips with a different library (local headers, not the central directory the guard checks). | About 750 lines (with comments) that mirror exceljs's parsing, pinned to exceljs 4.4.0. A merged range is read from its top-left cell only; exceljs copied the value into every covered cell. Elements exceljs mis-parses inside a cell, such as a phonetic guide on an inline string, are skipped, where exceljs dropped the rest of the sheet. Only the parts listed are parsed, so a broken chart or comment no longer makes a file unreadable. |
 | **An email on two rows of one file is an error** | Matching is by email, so two rows for one email are ambiguous; every such row is rejected. | Known limitation: an inactive export of someone who left twice holds two rows with their email, so it can't be re-imported unchanged; remove one row first. |
-| **Row and file caps** | 10 MB file, 20,000 data rows, strict header order. Rejected before row parsing. | Larger loads need splitting. |
+| **Row and file caps** | 10 MB file, 24 MB unzipped, 20,000 data rows, strict header order. The row cap is enforced while the sheet streams, so the rest of an oversized file is never read; all of this is checked before any row is parsed. | Larger loads need splitting. |
 | **Perf suite separate from the unit suite** | The brief asks for fast, deterministic unit tests; timing tests seeding 10,000 rows are neither. `npm test` stays in seconds; `npm run test:perf` runs the timing tests with explicit budgets. | Perf regressions are caught only when that command is run (CI runs lint, typecheck and `npm test`). |
 | **TypeScript 6, not 7** | `typescript-eslint` 8.72 supports TypeScript below 6.1, so TS 7 would break linting. | Stay on 6.0.x until the lint tooling catches up. |
 | **React Router 7, not 8** | v8 needs a newer Node and brings new APIs; v7's data-router API is stable and well known. | Revisit when v8 is the norm. |
@@ -152,7 +153,17 @@ Rows are matched to existing employees by email. A row identical to any stored r
 | Import preview of a 10,000-row file | 880 ms | < 30,000 ms |
 | Import apply of a 10,000-row file (10,000 creates, one transaction) | 2,134 ms | < 30,000 ms |
 
-Other numbers: `npm run seed` takes about 2 s for 10,000 employees (generation plus insert); the zip-bomb guard costs about 50 ms on a 20,000-row file and rejects a 300 MB inflated bomb in about 340 ms. These are single-run laptop figures; the budgets leave room for slower hosts. Seeding happens once, on first boot of an empty database.
+Other numbers: `npm run seed` takes about 2 s for 10,000 employees (generation plus insert); the zip-bomb guard costs about 50 ms on a 20,000-row file and rejects a 300 MB inflated bomb in about 340 ms.
+
+Reading an uploaded file (`readImportFile` alone, peak RSS from `/usr/bin/time -l`, a bare `tsx` process is 60 MB):
+
+| File | Before (full exceljs load) | After (streamed) |
+|---|---|---|
+| Legitimate 20,000-row export (1.2 MB zipped, 8.4 MB unzipped), accepted | 737 ms, 352 MB | 433 ms, 141 MB |
+| Review probe: 380,098 rows, 9.9 MB zipped, 95 MB unzipped | 10.6 s, 1.43 GB, then TOO_MANY_ROWS | 0.36 s, 106 MB, rejected by the 24 MB unzipped limit (row cap alone, guard bypassed: 241 ms, 115 MB, stopped after 20,001 rows) |
+| 97,000 rows of numbers, 23.5 MB unzipped | 2.6 s, 918 MB | 449 ms, 137 MB, TOO_MANY_ROWS |
+| 23.5 MB of cells outside the template columns | 2.8 s, 1.07 GB | 1.2 s, 143 MB, NO_DATA_ROWS |
+| 6.5 KB file declaring a 2.5-million-cell merge | 1.3 s, 864 MB | 20 ms, 80 MB | These are single-run laptop figures; the budgets leave room for slower hosts. Seeding happens once, on first boot of an empty database.
 
 ## What would change for production with real data
 

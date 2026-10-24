@@ -45,3 +45,10 @@ export async function rewritePart(
   zip.file(partName, rewrite(await part.async('string')));
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
+
+/** The text of one part of the archive, such as a sheet's XML. */
+export async function readPart(archive: Buffer, partName: string): Promise<string> {
+  const part = (await JSZip.loadAsync(archive)).file(partName);
+  if (!part) throw new Error(`The archive has no part named ${partName}`);
+  return part.async('string');
+}
