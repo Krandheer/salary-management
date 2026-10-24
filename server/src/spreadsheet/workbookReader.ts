@@ -191,12 +191,14 @@ async function readSheetRows(sheet: FirstWorksheet): Promise<RawImportRow[]> {
 
 /**
  * Reads the first sheet of an uploaded .xlsx into raw rows. The sheet is streamed row by row and
- * no workbook model is built. Memory is bounded by limits, not by streaming alone: 10 MB uploaded,
- * 1,000 zip entries, 24 MB unzipped in total, and, in every part, 64 levels of nesting and 64
- * attributes per element, 250,000 shared strings, 16,384 columns a row, and the 20,000 rows kept.
- * Throws `ImportFileError` when the file as a
- * whole can't be imported: wrong type, too large (as uploaded or once unzipped), too many parts,
- * malformed or past a limit, wrong header row, too many rows or none.
+ * no workbook model is built, but streaming alone does not bound memory; limits do: 10 MB
+ * uploaded, 1,000 zip entries, 24 MB unzipped in total, and in every part 64 levels of nesting,
+ * 64 attributes per element, 250,000 shared strings, 16,384 columns a row, 1,000 sheets and
+ * relationships, 65,490 cell and number formats, and the 20,000 rows kept. Measured with a 256 MB
+ * heap, the worst file within them peaks at about 275 MB of RSS (250,000 empty rich-text shared
+ * strings) and a legitimate 20,000-row file at about 140 MB. Throws `ImportFileError` when the
+ * file as a whole can't be imported: wrong type, too large (as uploaded or once unzipped), too
+ * many parts, malformed or past a limit, wrong header row, too many rows or none.
  */
 export async function readImportFile(content: Buffer, fileName: string): Promise<RawImportRow[]> {
   rejectUnlessXlsxName(fileName);
