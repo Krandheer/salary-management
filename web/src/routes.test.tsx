@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestJson } from '@/api/http';
+import { aReference } from '../test/fixtures';
 import { appRoutes } from './routes';
 
 vi.mock('@/api/http', async (importOriginal) => ({
@@ -22,12 +23,10 @@ function renderApp(route: string) {
 }
 
 beforeEach(() => {
-  vi.mocked(requestJson).mockResolvedValue({
-    items: [],
-    page: 1,
-    pageSize: 25,
-    total: 0,
-    totalPages: 1,
+  vi.mocked(requestJson).mockImplementation(async (path: string) => {
+    if (path.startsWith('/api/reference')) return aReference();
+    if (path.startsWith('/api/employees/job-titles')) return { jobTitles: [] };
+    return { items: [], page: 1, pageSize: 25, total: 0, totalPages: 1 };
   });
 });
 
