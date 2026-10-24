@@ -1,9 +1,10 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { anImportRow, buildImportFile, TEMPLATE_HEADERS } from '../../test/importWorkbook.ts';
-import { withDeclaredUncompressedSizes } from '../../test/zipArchive.ts';
+import { rewritePart, withDeclaredUncompressedSizes } from '../../test/zipArchive.ts';
 import { ImportFileError } from '../shared/errors.ts';
 import {
+  type RawImportRow,
   MAX_IMPORT_BYTES,
   MAX_IMPORT_ROWS,
   MAX_UNCOMPRESSED_BYTES,
@@ -12,6 +13,7 @@ import {
 } from './workbookReader.ts';
 
 const FILE_NAME = 'employees.xlsx';
+const FIRST_SHEET_PART = 'xl/worksheets/sheet1.xml';
 
 async function expectRejection(read: Promise<unknown>, code: string): Promise<ImportFileError> {
   const error = await read.then(
@@ -61,7 +63,7 @@ describe('readImportFile: the file itself', () => {
     await expectRejection(readImportFile(oversize, FILE_NAME), 'FILE_TOO_LARGE');
   });
 
-  it('rejects a workbook that would be larger than 100 MB once unzipped', async () => {
+  it('rejects a workbook that would be larger than 24 MB once unzipped', async () => {
     const zipBomb = withDeclaredUncompressedSizes(
       await buildImportFile([anImportRow()]),
       () => MAX_UNCOMPRESSED_BYTES,
@@ -69,7 +71,19 @@ describe('readImportFile: the file itself', () => {
 
     const error = await expectRejection(readImportFile(zipBomb, FILE_NAME), 'INVALID_FILE');
 
-    expect(error.message).toBe('The file is too large when uncompressed (over 100 MB)');
+    expect(error.message).toBe('The file is too large when uncompressed (over 24 MB)');
+  });
+
+  it('rejects a workbook declaring 25 MB once unzipped, well under the old 100 MB limit', async () => {
+    const twentyFiveMegabytes = 25 * 1024 * 1024;
+    const zipBomb = withDeclaredUncompressedSizes(
+      await buildImportFile([anImportRow()]),
+      (entryIndex) => (entryIndex === 0 ? twentyFiveMegabytes : 0),
+    );
+
+    const error = await expectRejection(readImportFile(zipBomb, FILE_NAME), 'INVALID_FILE');
+
+    expect(error.message).toMatch(/too large when uncompressed/);
   });
 });
 
@@ -189,6 +203,117 @@ describe('readImportFile: the data rows', () => {
     const error = await expectRejection(readImportFile(content, FILE_NAME), 'TOO_MANY_ROWS');
 
     expect(error.message).toContain('20,000');
+  });
+
+  it('stops reading at the 20,001st data row, before the rest of the sheet', async () => {
+    const tooMany = await buildImportFile(rowsOfOneCell(MAX_IMPORT_ROWS + 1));
+    const brokenAfterTheLimit = await rewritePart(tooMany, FIRST_SHEET_PART, (xml) =>
+      xml.replace('</sheetData>', '<row r="90000"><<this is not XML'),
+    );
+
+    await expectRejection(readImportFile(brokenAfterTheLimit, FILE_NAME), 'TOO_MANY_ROWS');
+  });
+
+  it('reads a merged range from its top-left cell only, leaving the cells it covers empty', async () => {
+    const content = await buildImportFile(
+      [anImportRow(), anImportRow({ fullName: 'Bela Roy', department: null })],
+      { merges: ['D2:D3'] },
+    );
+
+    const rows = await readImportFile(content, FILE_NAME);
+
+    expect(rows[0]!.cells[3]).toBe('Engineering');
+    expect(rows[1]!.cells[3]).toBeNull();
+  });
+
+  it('reads the first tab in workbook order, whichever part stores it', async () => {
+    const content = await buildImportFile([anImportRow()], {
+      otherSheets: [[TEMPLATE_HEADERS, anImportRow({ fullName: 'Bela Roy' })]],
+    });
+    const otherTabFirst = await rewritePart(content, 'xl/workbook.xml', (xml) =>
+      xml.replace(/(<sheet [^>]*\/>)(<sheet [^>]*\/>)/, '$2$1'),
+    );
+
+    const rows = await readImportFile(otherTabFirst, FILE_NAME);
+
+    expect(rows.map((row) => row.cells[0])).toEqual(['Bela Roy']);
+  });
+});
+
+const HIRE_DATE = new Date('2021-03-15T00:00:00.000Z');
+
+/** One row per kind of cell a spreadsheet application writes, in the template's nine columns. */
+function rowsOfEveryCellKind(): ExcelJS.CellValue[][] {
+  return [
+    ['Plain text', 85_000, HIRE_DATE, true, { error: '#N/A' }, '   ', null, 'x', 1.5],
+    [
+      { richText: [{ text: 'Asha ', font: { bold: true } }, { text: 'Rao' }] },
+      { text: 'asha.rao@acme.example', hyperlink: 'mailto:asha.rao@acme.example' },
+      { formula: 'B2*2', result: 170_000 },
+      { formula: 'A2', result: 'a text result' },
+      { formula: 'TRUE()', result: true },
+      { formula: '1/0', result: { error: '#DIV/0!' } },
+      { formula: 'DATE(2021,3,15)', result: HIRE_DATE },
+      { formula: 'B2' },
+      '  padded  ',
+    ],
+    [null, null, null, null, null, null, null, null, null, 'beyond the template columns'],
+    ['  ', '', null],
+    ['Last', 44_270, 44_270.5, 44_270, 0, -1, 'end', null, 7],
+  ];
+}
+
+/** Formats that decide whether a number reads as a date: built-in, custom, time and non-date. */
+function formatEveryCellKind(sheet: ExcelJS.Worksheet): void {
+  sheet.getCell('G3').numFmt = 'yyyy-mm-dd';
+  sheet.getCell('B6').numFmt = 'dd/mm/yyyy';
+  sheet.getCell('C6').numFmt = 'h:mm';
+  sheet.getCell('D6').numFmt = '#,##0';
+  sheet.getCell('E6').numFmt = 'mm-dd-yy';
+  sheet.getCell('H6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
+}
+
+async function aWorkbookOfEveryCellKind(options: {
+  useSharedStrings: boolean;
+  date1904: boolean;
+}): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.properties.date1904 = options.date1904;
+  const sheet = workbook.addWorksheet('Employees');
+  sheet.addRow(TEMPLATE_HEADERS);
+  for (const row of rowsOfEveryCellKind()) sheet.addRow(row);
+  formatEveryCellKind(sheet);
+  const content = await workbook.xlsx.writeBuffer({ useSharedStrings: options.useSharedStrings });
+  return Buffer.from(content);
+}
+
+/** The rows as exceljs's full workbook model presents them: the reading every import has relied on. */
+async function readThroughTheFullWorkbookModel(content: Buffer): Promise<RawImportRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(content as unknown as ExcelJS.Buffer);
+  const rows: RawImportRow[] = [];
+  workbook.worksheets[0]!.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const cells = TEMPLATE_HEADERS.map((_, index) => readCellValue(row.getCell(index + 1).value));
+    const isBlank = cells.every((cell) => cell === null || String(cell).trim() === '');
+    if (!isBlank) rows.push({ rowNumber, cells });
+  });
+  return rows;
+}
+
+describe('readImportFile: cell values match the full workbook model', () => {
+  it.each([
+    { label: 'shared strings', useSharedStrings: true, date1904: false },
+    { label: 'inline strings', useSharedStrings: false, date1904: false },
+    { label: 'the 1904 date system', useSharedStrings: true, date1904: true },
+  ])('reads every kind of cell as the full model does, with $label', async (options) => {
+    const content = await aWorkbookOfEveryCellKind(options);
+    const expected = await readThroughTheFullWorkbookModel(content);
+
+    const rows = await readImportFile(content, FILE_NAME);
+
+    expect(expected.map((row) => row.rowNumber)).toEqual([2, 3, 6]);
+    expect(rows).toEqual(expected);
   });
 });
 

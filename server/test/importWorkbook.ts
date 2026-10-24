@@ -26,6 +26,8 @@ export interface ImportFileOptions {
   headers?: ExcelJS.CellValue[];
   /** Extra sheets added after the first one, each as rows of cell values. */
   otherSheets?: ExcelJS.CellValue[][][];
+  /** Ranges of the first sheet to merge, such as 'D2:D3'. */
+  merges?: string[];
 }
 
 /** An .xlsx whose first sheet has the header row (the template headers by default) and the rows. */
@@ -37,6 +39,7 @@ export async function buildImportFile(
   const sheet = workbook.addWorksheet('Employees');
   sheet.addRow(options.headers ?? TEMPLATE_HEADERS);
   for (const row of rows) sheet.addRow(row);
+  for (const range of options.merges ?? []) sheet.mergeCells(range);
   (options.otherSheets ?? []).forEach((otherRows, index) => {
     const other = workbook.addWorksheet(`Other ${index + 1}`);
     for (const row of otherRows) other.addRow(row);

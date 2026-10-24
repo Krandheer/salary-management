@@ -32,3 +32,16 @@ export function withDeclaredUncompressedSizes(
   }
   return crafted;
 }
+
+/** A copy of the archive with one text part (such as a sheet's XML) rewritten. */
+export async function rewritePart(
+  archive: Buffer,
+  partName: string,
+  rewrite: (xml: string) => string,
+): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(archive);
+  const part = zip.file(partName);
+  if (!part) throw new Error(`The archive has no part named ${partName}`);
+  zip.file(partName, rewrite(await part.async('string')));
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
