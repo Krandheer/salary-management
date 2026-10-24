@@ -36,3 +36,26 @@ export interface ApiErrorBody {
     preview?: unknown;
   };
 }
+
+/** Rows per page in the employee list. */
+export const PAGE_SIZE = 25;
+
+export interface EmployeeSummary {
+  id: number;
+  fullName: string;
+  jobTitle: string;
+  department: string;
+  country: CountryCode;
+  currency: CurrencyCode;
+  currentSalary: number;
+  status: EmployeeStatus;
+  exitDate: IsoDate | null;
+}
+
+export interface EmployeeListPage {
+  items: EmployeeSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
