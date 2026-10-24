@@ -81,6 +81,23 @@ describe('EmployeeDetailPage', () => {
     );
   });
 
+  it('marks the newest salary entry as current', async () => {
+    requestJsonMock.mockResolvedValue({
+      ...detail,
+      currentSalary: 2_000_000,
+      salaryHistory: [
+        { ...detail.salaryHistory[0]!, id: 2, amount: 2_000_000, effectiveDate: '2025-01-01' },
+        ...detail.salaryHistory,
+      ],
+    });
+
+    renderDetail('7');
+
+    await screen.findByRole('heading', { level: 1, name: 'Asha Rao' });
+    expect(screen.getAllByText('Current')).toHaveLength(1);
+    expect(screen.getByText('Current').closest('tr')).toHaveTextContent('2025-01-01');
+  });
+
   it('links to the edit page', async () => {
     requestJsonMock.mockResolvedValue(detail);
 

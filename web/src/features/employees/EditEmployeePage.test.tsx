@@ -125,7 +125,70 @@ describe('EditEmployeePage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(patchBodies()).toHaveLength(1));
-    expect(patchBodies()[0]).toEqual({ country: 'JP', salaryChange: { amount: '9500000' } });
+    expect(patchBodies()[0]).toEqual({
+      country: 'JP',
+      salaryChange: { amount: '9500000', effectiveDate: '2026-10-24' },
+    });
+  });
+
+  it('defaults the salary effective date to the server date, limited to hire date through today', async () => {
+    serveApi();
+    renderEditPage();
+
+    const pay = await screen.findByRole('group', { name: 'Change salary' });
+    const effectiveDate = within(pay).getByLabelText(/effective date/i);
+
+    expect(effectiveDate).toHaveValue('2026-10-24');
+    expect(effectiveDate).toHaveAttribute('max', '2026-10-24');
+    expect(effectiveDate).toHaveAttribute('min', '2024-03-01');
+    expect(within(pay).getByLabelText(/reason/i)).toHaveValue('');
+  });
+
+  it('sends the chosen effective date and reason with the new salary', async () => {
+    serveApi();
+    const user = userEvent.setup();
+    renderEditPage();
+
+    await user.type(await screen.findByLabelText(/new annual salary/i), '2000000');
+    const effectiveDate = screen.getByLabelText(/effective date/i);
+    await user.clear(effectiveDate);
+    await user.type(effectiveDate, '2025-04-01');
+    await user.type(screen.getByLabelText(/reason/i), 'Annual review');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(patchBodies()).toHaveLength(1));
+    expect(patchBodies()[0]).toEqual({
+      salaryChange: { amount: '2000000', effectiveDate: '2025-04-01', reason: 'Annual review' },
+    });
+  });
+
+  it('sends no salary change when only the effective date or reason is filled in', async () => {
+    serveApi();
+    const user = userEvent.setup();
+    renderEditPage();
+
+    await user.type(await screen.findByLabelText(/reason/i), 'Just a note');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(patchBodies()).toHaveLength(1));
+    expect(patchBodies()[0]).toEqual({});
+  });
+
+  it('shows an effective date error next to the effective date field', async () => {
+    serveApi(() => {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Some fields are invalid', {
+        'salaryChange.effectiveDate': 'Effective date cannot be in the future',
+      });
+    });
+    const user = userEvent.setup();
+    renderEditPage();
+
+    await user.type(await screen.findByLabelText(/new annual salary/i), '2000000');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const effectiveDate = await screen.findByLabelText(/effective date/i);
+    await waitFor(() => expect(effectiveDate).toHaveAttribute('aria-invalid', 'true'));
+    expect(effectiveDate).toHaveAccessibleDescription('Effective date cannot be in the future');
   });
 
   it('shows the salary error next to the new salary field', async () => {

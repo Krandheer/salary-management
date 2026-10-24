@@ -750,6 +750,172 @@ describe('PATCH /api/employees/:id', () => {
   });
 });
 
+describe('salary history through PATCH /api/employees/:id', () => {
+  const patch = (app: ReturnType<typeof createTestApp>['app'], id: number, body: object) =>
+    request(app).patch(`/api/employees/${id}`).send(body);
+  const getDetail = async (app: ReturnType<typeof createTestApp>['app'], id: number) =>
+    (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+
+  it('adds a dated entry with its reason and leaves every earlier entry unchanged', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      salaryHistory: [
+        { amount: 70_000, effectiveDate: '2020-01-15', reason: 'Starting salary' },
+        { amount: 80_000, effectiveDate: '2022-01-01', reason: 'Review' },
+      ],
+    });
+    const before = (await getDetail(app, id)).salaryHistory;
+
+    const response = await patch(app, id, {
+      salaryChange: { amount: 95_000, effectiveDate: '2025-06-01', reason: '  Promotion ' },
+    });
+
+    expect(response.status).toBe(200);
+    const history = (response.body as EmployeeDetail).salaryHistory;
+    expect(history[0]).toMatchObject({
+      amount: 95_000,
+      effectiveDate: '2025-06-01',
+      reason: 'Promotion',
+    });
+    expect(history.slice(1)).toEqual(before);
+  });
+
+  it('lists the history newest effective date first', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      salaryHistory: [
+        { amount: 70_000, effectiveDate: '2020-01-15' },
+        { amount: 90_000, effectiveDate: '2023-01-01' },
+        { amount: 80_000, effectiveDate: '2021-01-01' },
+      ],
+    });
+
+    const dates = (await getDetail(app, id)).salaryHistory.map((entry) => entry.effectiveDate);
+
+    expect(dates).toEqual(['2023-01-01', '2021-01-01', '2020-01-15']);
+  });
+
+  it('makes the entry recorded later current when two share an effective date', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      salaryHistory: [{ amount: 80_000, effectiveDate: '2024-05-01', reason: 'First' }],
+    });
+
+    const response = await patch(app, id, {
+      salaryChange: { amount: 85_000, effectiveDate: '2024-05-01', reason: 'Second' },
+    });
+
+    const detail = response.body as EmployeeDetail;
+    expect(detail.currentSalary).toBe(85_000);
+    expect(detail.salaryHistory.map((entry) => entry.reason)).toEqual(['Second', 'First']);
+    expect((await getPage(app)).body.items[0]?.currentSalary).toBe(85_000);
+  });
+
+  it('adds a backdated entry to the history without changing the current salary', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      salaryHistory: [
+        { amount: 70_000, effectiveDate: '2020-01-15' },
+        { amount: 90_000, effectiveDate: '2024-01-01' },
+      ],
+    });
+
+    const response = await patch(app, id, {
+      salaryChange: { amount: 75_000, effectiveDate: '2021-06-01' },
+    });
+
+    const detail = response.body as EmployeeDetail;
+    expect(detail.currentSalary).toBe(90_000);
+    expect(detail.salaryHistory.map((entry) => entry.amount)).toEqual([90_000, 75_000, 70_000]);
+    expect((await getPage(app)).body.items[0]?.currentSalary).toBe(90_000);
+  });
+
+  it('defaults the effective date to today and records no reason for a blank one', async () => {
+    const { app, db } = createTestApp({ today: '2026-03-10' });
+    const id = insertEmployee(db);
+
+    const response = await patch(app, id, { salaryChange: { amount: 99_000, reason: '   ' } });
+
+    expect((response.body as EmployeeDetail).salaryHistory[0]).toMatchObject({
+      effectiveDate: '2026-03-10',
+      reason: null,
+    });
+  });
+
+  it.each([
+    ['in the future', '2026-10-25', /future/i],
+    ['before the hire date', '2020-01-14', /hire date/i],
+  ])('answers 400 on salaryChange.effectiveDate when it is %s', async (_label, date, message) => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { hireDate: '2020-01-15' });
+    const before = await getDetail(app, id);
+
+    const response = await patch(app, id, {
+      salaryChange: { amount: 99_000, effectiveDate: date },
+    });
+
+    expect(response.status).toBe(400);
+    const { fieldErrors } = (response.body as ApiErrorBody).error;
+    expect(Object.keys(fieldErrors ?? {})).toEqual(['salaryChange.effectiveDate']);
+    expect(fieldErrors?.['salaryChange.effectiveDate']).toMatch(message);
+    expect(await getDetail(app, id)).toEqual(before);
+  });
+
+  it('accepts an effective date equal to the hire date', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { hireDate: '2020-01-15' });
+
+    const response = await patch(app, id, {
+      salaryChange: { amount: 99_000, effectiveDate: '2020-01-15' },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('accepts a reason of ten thousand characters and stores it whole', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db);
+    const reason = 'r'.repeat(10_000);
+
+    const response = await patch(app, id, { salaryChange: { amount: 99_000, reason } });
+
+    expect((response.body as EmployeeDetail).salaryHistory[0]?.reason).toBe(reason);
+  });
+
+  it('adds no entry when the salary and the country stay the same', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      salaryHistory: [{ amount: 80_000, effectiveDate: '2022-01-01' }],
+    });
+
+    const response = await patch(app, id, {
+      jobTitle: 'Lead',
+      salaryChange: { amount: '80000', reason: 'Re-saved' },
+    });
+
+    expect(response.status).toBe(200);
+    const detail = response.body as EmployeeDetail;
+    expect(detail.jobTitle).toBe('Lead');
+    expect(detail.salaryHistory).toHaveLength(1);
+  });
+
+  it('adds an entry for the same amount when the country changes, in the new currency', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      countryCode: 'US',
+      salaryHistory: [{ amount: 80_000, effectiveDate: '2022-01-01' }],
+    });
+
+    const response = await patch(app, id, { country: 'GB', salaryChange: { amount: 80_000 } });
+
+    const history = (response.body as EmployeeDetail).salaryHistory;
+    expect(history.map((entry) => [entry.amount, entry.currency])).toEqual([
+      [80_000, 'GBP'],
+      [80_000, 'USD'],
+    ]);
+  });
+});
+
 describe('malformed JSON request body', () => {
   it('answers 400 VALIDATION_FAILED instead of a server error', async () => {
     const { app } = createTestApp();
