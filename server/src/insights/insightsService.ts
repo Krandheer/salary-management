@@ -13,7 +13,13 @@ import type { ActiveSalaryRow, EmployeeRepository } from '../employees/employeeR
 import { compareTitles, pickDisplayTitle } from '../employees/jobTitles.ts';
 import { groupBy } from '../shared/collections.ts';
 import { NotFoundError } from '../shared/errors.ts';
-import { RATES_AS_OF, RATES_SOURCE, findCountry, toUsdRates } from '../reference/referenceData.ts';
+import {
+  RATES_AS_OF,
+  RATES_SOURCE,
+  findCountry,
+  requireCountry,
+  toUsdRates,
+} from '../reference/referenceData.ts';
 import { averageInUsd } from './currencyConversion.ts';
 import { summarizeSalaries } from './statistics.ts';
 
@@ -30,7 +36,7 @@ function countryUsdComparisons(
 ): CountryUsdComparison[] {
   const comparisons = [...groupBy(rows, (row) => row.countryCode)].map(
     ([code, group]): CountryUsdComparison => {
-      const country = findCountry(code)!;
+      const country = requireCountry(code);
       return {
         country: country.code,
         countryName: country.name,
@@ -65,7 +71,7 @@ export class InsightsService {
       (row) => row.countryCode,
     );
     const countries = [...rowsByCountry].map(([code, group]): CountryInsight => {
-      const country = findCountry(code)!;
+      const country = requireCountry(code);
       return {
         country: country.code,
         countryName: country.name,

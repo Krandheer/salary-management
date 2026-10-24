@@ -51,15 +51,19 @@ export function findCountry(code: string): CountryReference | undefined {
   return COUNTRIES.find((country) => country.code === code);
 }
 
+export function requireCountry(code: string): CountryReference {
+  const country = findCountry(code);
+  if (!country) throw new Error(`Unknown country code: ${code}`);
+  return country;
+}
+
 export function findCountryByName(name: string): CountryReference | undefined {
   const wanted = name.trim().toLowerCase();
   return COUNTRIES.find((country) => country.name.toLowerCase() === wanted);
 }
 
 export function currencyFor(code: CountryCode): CurrencyCode {
-  const country = findCountry(code);
-  if (!country) throw new Error(`Unknown country code: ${code}`);
-  return country.currency;
+  return requireCountry(code).currency;
 }
 
 export function toUsdRates(): Record<CurrencyCode, number> {

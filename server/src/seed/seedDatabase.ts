@@ -6,9 +6,9 @@ import {
   type NewEmployeeRow,
   type NewSalaryHistoryRow,
 } from '../db/schema.ts';
+import { toEmployeeColumns } from '../employees/employeeColumns.ts';
 import { currencyFor } from '../reference/referenceData.ts';
 import type { Clock } from '../shared/clock.ts';
-import { normalizeKey } from '../shared/text.ts';
 import { generateSeedEmployees, type SeedEmployee } from './generateEmployees.ts';
 import { SEED_EMPLOYEE_COUNT, SEED_RANDOM_SEED } from './seedCatalogue.ts';
 
@@ -24,15 +24,7 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 function toEmployeeRow(employee: SeedEmployee, id: number, recordedAt: string): NewEmployeeRow {
   return {
     id,
-    fullName: employee.fullName,
-    nameKey: normalizeKey(employee.fullName),
-    email: employee.email,
-    jobTitle: employee.jobTitle,
-    jobTitleKey: normalizeKey(employee.jobTitle),
-    department: employee.department,
-    countryCode: employee.countryCode,
-    employmentType: employee.employmentType,
-    hireDate: employee.hireDate,
+    ...toEmployeeColumns(employee),
     status: 'active',
     exitDate: null,
     createdAt: recordedAt,

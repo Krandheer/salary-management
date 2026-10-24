@@ -14,11 +14,11 @@ import type { AppDatabase } from '../db/database.ts';
 import { currentSalaries, employees, salaryHistory, type EmployeeRow } from '../db/schema.ts';
 import { currencyFor, findCountry } from '../reference/referenceData.ts';
 import { normalizeKey } from '../shared/text.ts';
+import { toEmployeeColumns } from './employeeColumns.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
 import type { ExportRow, StoredEmployee } from './employeeReadModels.ts';
 import type { EmployeeFields } from './employeeValidation.ts';
-
-export const STARTING_SALARY_REASON = 'Starting salary';
+import { STARTING_SALARY_REASON } from './salaryHistoryRules.ts';
 
 /** The current salary is the first row in this order; the `current_salaries` view uses the same rule. */
 export const SALARY_HISTORY_ORDER = [desc(salaryHistory.effectiveDate), desc(salaryHistory.id)];
@@ -216,18 +216,8 @@ export class EmployeeRepository {
       .all() as ActiveSalaryRow[];
   }
 
-  /** The id of the active employee with this email (already lower-cased), if any. */
-  findActiveIdByEmail(email: string): number | null {
-    const row = this.db
-      .select({ id: employees.id })
-      .from(employees)
-      .where(and(eq(employees.email, normalizeKey(email)), eq(employees.status, 'active')))
-      .get();
-    return row?.id ?? null;
-  }
-
-  /** The id of another active employee with this email (already lower-cased), if any. */
-  findActiveIdByEmailExcluding(email: string, excludedId: number): number | null {
+  /** The id of the active employee with this email (already lower-cased), if any; `excludeId` skips that employee. */
+  findActiveIdByEmail(email: string, excludeId?: number): number | null {
     const row = this.db
       .select({ id: employees.id })
       .from(employees)
@@ -235,7 +225,7 @@ export class EmployeeRepository {
         and(
           eq(employees.email, normalizeKey(email)),
           eq(employees.status, 'active'),
-          ne(employees.id, excludedId),
+          excludeId === undefined ? undefined : ne(employees.id, excludeId),
         ),
       )
       .get();
@@ -276,40 +266,29 @@ export class EmployeeRepository {
     return this.db.transaction(work);
   }
 
-  /** Inserts an active employee with a first salary history entry; returns the new id. */
+  /** Inserts an active employee with a first salary history entry; returns the new id. Call inside a transaction. */
   insertEmployee(fields: EmployeeFields, recordedAt: string): number {
-    return this.db.transaction(() => {
-      const { id } = this.db
-        .insert(employees)
-        .values({
-          fullName: fields.fullName,
-          nameKey: normalizeKey(fields.fullName),
-          email: fields.email,
-          jobTitle: fields.jobTitle,
-          jobTitleKey: normalizeKey(fields.jobTitle),
-          department: fields.department,
-          countryCode: fields.countryCode,
-          employmentType: fields.employmentType,
-          hireDate: fields.hireDate,
-          status: 'active',
-          exitDate: null,
-          createdAt: recordedAt,
-        })
-        .returning({ id: employees.id })
-        .get();
-      this.db
-        .insert(salaryHistory)
-        .values({
-          employeeId: id,
-          amount: fields.annualSalary,
-          currency: currencyFor(fields.countryCode),
-          effectiveDate: fields.hireDate,
-          reason: STARTING_SALARY_REASON,
-          recordedAt,
-        })
-        .run();
-      return id;
-    });
+    const { id } = this.db
+      .insert(employees)
+      .values({
+        ...toEmployeeColumns(fields),
+        status: 'active',
+        exitDate: null,
+        createdAt: recordedAt,
+      })
+      .returning({ id: employees.id })
+      .get();
+    this.insertSalaryEntry(
+      id,
+      {
+        amount: fields.annualSalary,
+        currency: currencyFor(fields.countryCode),
+        effectiveDate: fields.hireDate,
+        reason: STARTING_SALARY_REASON,
+      },
+      recordedAt,
+    );
+    return id;
   }
 
   getEditableState(id: number): EditableState | null {
@@ -326,21 +305,7 @@ export class EmployeeRepository {
 
   /** Overwrites the employee's own fields (not the salary) and refreshes the search keys. */
   updateEmployeeFields(id: number, fields: EmployeeFields): void {
-    this.db
-      .update(employees)
-      .set({
-        fullName: fields.fullName,
-        nameKey: normalizeKey(fields.fullName),
-        email: fields.email,
-        jobTitle: fields.jobTitle,
-        jobTitleKey: normalizeKey(fields.jobTitle),
-        department: fields.department,
-        countryCode: fields.countryCode,
-        employmentType: fields.employmentType,
-        hireDate: fields.hireDate,
-      })
-      .where(eq(employees.id, id))
-      .run();
+    this.db.update(employees).set(toEmployeeColumns(fields)).where(eq(employees.id, id)).run();
   }
 
   insertSalaryEntry(employeeId: number, entry: SalaryEntryInput, recordedAt: string): void {

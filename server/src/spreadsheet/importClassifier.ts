@@ -13,6 +13,7 @@ import {
   validateRehireHireDate,
   type EmployeeFields,
 } from '../employees/employeeValidation.ts';
+import { isNewHistoryEntryNeeded } from '../employees/salaryHistoryRules.ts';
 import { currencyFor, findCountry } from '../reference/referenceData.ts';
 import { normalizeKey } from '../shared/text.ts';
 import type { ParsedImportRow } from './importRowParser.ts';
@@ -119,12 +120,8 @@ function aCreate(
   };
 }
 
-/** A new history entry is needed when the amount differs or the pay moves to another country. */
 function plannedSalaryChange(active: ExistingEmployee, incoming: EmployeeFields) {
-  const isChanged =
-    incoming.annualSalary !== active.fields.annualSalary ||
-    incoming.countryCode !== active.fields.countryCode;
-  if (!isChanged) return null;
+  if (!isNewHistoryEntryNeeded(active.fields, incoming)) return null;
   return { amount: incoming.annualSalary, currency: currencyFor(incoming.countryCode) };
 }
 

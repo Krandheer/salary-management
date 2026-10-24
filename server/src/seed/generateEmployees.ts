@@ -19,6 +19,7 @@ import {
   currencyFor,
   toUsdRates,
 } from '../reference/referenceData.ts';
+import { STARTING_SALARY_REASON } from '../employees/salaryHistoryRules.ts';
 import { addDays, daysBetween } from '../shared/dates.ts';
 import {
   COUNTRY_PAY_FACTORS,
@@ -69,7 +70,6 @@ const MIN_RAISE = 0.03;
 const MAX_RAISE = 0.12;
 const SALARY_ROUNDING = 100;
 const EMAIL_DOMAIN = 'acme.example';
-const STARTING_SALARY_REASON = 'Starting salary';
 const RAISE_REASONS = ['Annual review', 'Promotion'] as const;
 
 const ALL_PROFILES: readonly { department: string; profile: JobProfile }[] = Object.entries(

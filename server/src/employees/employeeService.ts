@@ -1,7 +1,6 @@
 import {
   PAGE_SIZE,
   type EmailCheckResult,
-  type IsoDate,
   type EmployeeDetail,
   type EmployeeListPage,
 } from '@acme/contracts';
@@ -23,18 +22,11 @@ import {
   type EmployeeFields,
   type ValidSalaryChange,
 } from './employeeValidation.ts';
+import { isIsoDate } from '../shared/dates.ts';
 import { groupBy } from '../shared/collections.ts';
+import { isNewHistoryEntryNeeded } from './salaryHistoryRules.ts';
 import { normalizeKey } from '../shared/text.ts';
 import { compareTitles, pickDisplayTitle } from './jobTitles.ts';
-
-/** Re-saving the same amount in the same country is not a change, so it leaves no history entry. */
-function isNewHistoryEntryNeeded(
-  stored: EmployeeFields,
-  updated: EmployeeFields,
-  change: ValidSalaryChange,
-): boolean {
-  return change.amount !== stored.annualSalary || updated.countryCode !== stored.countryCode;
-}
 
 /** The rehire rule depends on the hire date and on which earlier records share the email. */
 function isRehireRuleAffected(stored: EmployeeFields, updated: EmployeeFields): boolean {
@@ -68,7 +60,9 @@ export class EmployeeService {
       throw new EmailTakenError();
     }
     this.checkRehireHireDate(validation.fields);
-    const id = this.repository.insertEmployee(validation.fields, this.clock.now());
+    const id = this.repository.inTransaction(() =>
+      this.repository.insertEmployee(validation.fields, this.clock.now()),
+    );
     return this.getEmployee(id);
   }
 
@@ -107,15 +101,24 @@ export class EmployeeService {
     });
     if (!validation.ok) throw new ValidationError(validation.fieldErrors);
     const { fields, salaryChange } = validation;
-    if (this.repository.findActiveIdByEmailExcluding(fields.email, id) !== null) {
+    if (this.repository.findActiveIdByEmail(fields.email, id) !== null) {
       throw new EmailTakenError();
     }
     if (isRehireRuleAffected(state.fields, fields)) this.checkRehireHireDate(fields);
     this.repository.updateEmployeeFields(id, fields);
-    if (salaryChange && isNewHistoryEntryNeeded(state.fields, fields, salaryChange)) {
+    if (salaryChange && this.isSalaryEntryNeeded(state.fields, fields, salaryChange)) {
       const entry = { ...salaryChange, currency: currencyFor(fields.countryCode) };
       this.repository.insertSalaryEntry(id, entry, this.clock.now());
     }
+  }
+
+  private isSalaryEntryNeeded(
+    stored: EmployeeFields,
+    updated: EmployeeFields,
+    change: ValidSalaryChange,
+  ): boolean {
+    const proposed = { annualSalary: change.amount, countryCode: updated.countryCode };
+    return isNewHistoryEntryNeeded(stored, proposed);
   }
 
   private applyDeletion(id: number, exitDate: unknown): void {
@@ -123,8 +126,10 @@ export class EmployeeService {
     const today = this.clock.today();
     const chosenDate = exitDate === undefined || exitDate === '' ? today : exitDate;
     const error = validateExitDate(chosenDate, { today, hireDate: state.fields.hireDate });
-    if (error) throw new ValidationError({ exitDate: error });
-    this.repository.deactivate(id, chosenDate as IsoDate);
+    if (error !== null || !isIsoDate(chosenDate)) {
+      throw new ValidationError({ exitDate: error ?? 'Exit date must be a valid date' });
+    }
+    this.repository.deactivate(id, chosenDate);
   }
 
   /** Only inactive records count, so an edited (always active) employee is never judged against itself. */
