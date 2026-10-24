@@ -433,6 +433,7 @@ describe('GET /api/insights/countries/:code/job-titles', () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('NOT_FOUND');
+    expect(response.body.error.message).toBe('Unknown country ZZ');
   });
 });
 

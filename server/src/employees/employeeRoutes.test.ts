@@ -583,7 +583,10 @@ describe('GET /api/employees/:id', () => {
     const response = await request(app).get(`/api/employees/${id}`);
 
     expect(response.status).toBe(404);
-    expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
+    expect((response.body as ApiErrorBody).error).toMatchObject({
+      code: 'NOT_FOUND',
+      message: `Employee ${id} not found`,
+    });
   });
 });
 
@@ -732,7 +735,10 @@ describe('PATCH /api/employees/:id', () => {
     const response = await patch(app, id, { jobTitle: 'Lead' });
 
     expect(response.status).toBe(404);
-    expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
+    expect((response.body as ApiErrorBody).error).toMatchObject({
+      code: 'NOT_FOUND',
+      message: `Employee ${id} not found`,
+    });
   });
 
   it('answers 409 for an inactive employee and changes nothing', async () => {
@@ -1123,7 +1129,10 @@ describe('DELETE /api/employees/:id', () => {
     const response = await remove(app, 999);
 
     expect(response.status).toBe(404);
-    expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
+    expect((response.body as ApiErrorBody).error).toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'Employee 999 not found',
+    });
   });
 
   it('answers 400 with an exitDate error for a future date and leaves the employee active', async () => {
@@ -1154,7 +1163,9 @@ describe('DELETE /api/employees/:id', () => {
     const response = await remove(app, id, '?exitDate=2026-02-30');
 
     expect(response.status).toBe(400);
-    expect((response.body as ApiErrorBody).error.fieldErrors?.exitDate).toBeDefined();
+    expect((response.body as ApiErrorBody).error.fieldErrors?.exitDate).toBe(
+      'Exit date must be a valid date',
+    );
   });
 
   it('applies search and filters to the inactive list', async () => {
@@ -1189,15 +1200,21 @@ describe('inactive employees are read-only', () => {
     const { app, db } = createTestApp();
     const id = insertEmployee(db, { status: 'inactive', exitDate: '2025-01-01' });
 
-    const responses = await Promise.all([
-      request(app).post(`/api/employees/${id}/restoration`),
-      request(app).post(`/api/employees/${id}/restore`),
-      request(app).patch(`/api/employees/${id}`).send({ status: 'active' }),
-    ]);
+    const patched = await request(app).patch(`/api/employees/${id}`).send({ status: 'active' });
+    const restoration = await request(app).post(`/api/employees/${id}/restoration`);
+    const restore = await request(app).post(`/api/employees/${id}/restore`);
 
-    expect(responses.map((response) => response.status === 404 || response.status === 409)).toEqual(
-      [true, true, true],
-    );
+    expect(patched.status).toBe(409);
+    expect((patched.body as ApiErrorBody).error.code).toBe('EMPLOYEE_INACTIVE');
+    for (const [response, path] of [
+      [restoration, 'restoration'],
+      [restore, 'restore'],
+    ] as const) {
+      expect(response.status).toBe(404);
+      expect((response.body as ApiErrorBody).error.message).toBe(
+        `No route for POST /api/employees/${id}/${path}`,
+      );
+    }
     const detail = (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
     expect(detail.status).toBe('inactive');
   });

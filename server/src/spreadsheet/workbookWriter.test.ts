@@ -145,8 +145,10 @@ describe('buildTemplateWorkbook', () => {
 
     for (const country of COUNTRIES) {
       const row = rows.find((cells) => cells.includes(country.name));
-      expect(row).toBeDefined();
-      expect(row).toContain(country.currency);
+      expect(row?.filter((cell) => cell !== null && cell !== undefined)).toEqual([
+        country.name,
+        country.currency,
+      ]);
     }
   });
 });
