@@ -1,0 +1,227 @@
+import { describe, expect, it } from 'vitest';
+import {
+  isWellFormedEmail,
+  validateAnnualSalary,
+  validateCountry,
+  validateDepartment,
+  validateEmail,
+  validateEmployeeFields,
+  validateEmploymentType,
+  validateFullName,
+  validateHireDate,
+  validateJobTitle,
+} from './employeeValidation.ts';
+
+const TODAY = '2026-10-24';
+
+function aValidInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    fullName: 'Asha Rao',
+    email: 'asha.rao@acme.example',
+    jobTitle: 'Software Engineer',
+    department: 'Engineering',
+    country: 'IN',
+    annualSalary: 1_850_000,
+    employmentType: 'Full-time',
+    hireDate: '2024-03-01',
+    ...overrides,
+  };
+}
+
+describe('required text fields', () => {
+  it.each([
+    ['full name', validateFullName],
+    ['work email', validateEmail],
+    ['job title', validateJobTitle],
+  ])('%s is required when missing, empty or only spaces', (_label, validate) => {
+    expect(validate(undefined)).toMatch(/required/i);
+    expect(validate('')).toMatch(/required/i);
+    expect(validate('   ')).toMatch(/required/i);
+    expect(validate(null)).toMatch(/required/i);
+  });
+
+  it('accepts a full name with non-Latin characters and no length limit', () => {
+    expect(validateFullName('田中 太郎')).toBeNull();
+    expect(validateFullName('A'.repeat(5000))).toBeNull();
+  });
+
+  it('accepts any non-blank job title', () => {
+    expect(validateJobTitle('  Head of Everything  ')).toBeNull();
+  });
+});
+
+describe('work email format', () => {
+  it.each(['asha@acme.example', 'a.b+c@sub.domain.co', '  padded@acme.example  '])(
+    'accepts %s',
+    (value) => {
+      expect(validateEmail(value)).toBeNull();
+    },
+  );
+
+  it.each([
+    ['no @', 'asha.acme.example'],
+    ['two @', 'a@b@acme.example'],
+    ['a space', 'asha rao@acme.example'],
+    ['no dot in the domain', 'asha@acme'],
+    ['an empty local part', '@acme.example'],
+    ['a trailing dot in the domain', 'asha@acme.'],
+  ])('rejects an email with %s', (_label, value) => {
+    expect(isWellFormedEmail(value)).toBe(false);
+    expect(validateEmail(value)).toMatch(/email/i);
+  });
+});
+
+describe('department, country and employment type', () => {
+  it('accepts the listed values', () => {
+    expect(validateDepartment('Customer Support')).toBeNull();
+    expect(validateCountry('JP')).toBeNull();
+    expect(validateEmploymentType('Contractor')).toBeNull();
+  });
+
+  it('requires a value', () => {
+    expect(validateDepartment('')).toMatch(/required/i);
+    expect(validateCountry(undefined)).toMatch(/required/i);
+    expect(validateEmploymentType('  ')).toMatch(/required/i);
+  });
+
+  it('rejects values outside the fixed lists', () => {
+    expect(validateDepartment('Astrology')).toMatch(/department/i);
+    expect(validateCountry('XX')).toMatch(/country/i);
+    expect(validateEmploymentType('Intern')).toMatch(/employment type/i);
+  });
+});
+
+describe('annual salary', () => {
+  it('is required', () => {
+    expect(validateAnnualSalary(undefined, 'US')).toMatch(/required/i);
+    expect(validateAnnualSalary('', 'US')).toMatch(/required/i);
+  });
+
+  it.each([1.5, '1.5', 'abc', '12abc', NaN])('rejects %s as not a whole number', (value) => {
+    expect(validateAnnualSalary(value, 'US')).toMatch(/whole number/i);
+  });
+
+  it.each([0, -1, '0', '-5'])('rejects %s as not greater than zero', (value) => {
+    expect(validateAnnualSalary(value, 'US')).toMatch(/greater than zero/i);
+  });
+
+  it('accepts exactly the country maximum and rejects one above it', () => {
+    expect(validateAnnualSalary(50_000_000, 'US')).toBeNull();
+    expect(validateAnnualSalary(50_000_001, 'US')).toMatch(/50,000,000/);
+    expect(validateAnnualSalary(4_000_000_000, 'IN')).toBeNull();
+    expect(validateAnnualSalary(4_000_000_001, 'IN')).toMatch(/4,000,000,000/);
+  });
+
+  it('accepts a whole number typed as text', () => {
+    expect(validateAnnualSalary('85000', 'US')).toBeNull();
+  });
+
+  it('skips the maximum check when the country itself is invalid', () => {
+    expect(validateAnnualSalary(999_999_999_999, 'XX')).toBeNull();
+    expect(validateAnnualSalary(999_999_999_999, undefined)).toBeNull();
+  });
+});
+
+describe('hire date', () => {
+  it('is required', () => {
+    expect(validateHireDate(undefined, TODAY)).toMatch(/required/i);
+    expect(validateHireDate('', TODAY)).toMatch(/required/i);
+  });
+
+  it.each(['1950-01-01', '2000-02-29', TODAY])('accepts %s', (value) => {
+    expect(validateHireDate(value, TODAY)).toBeNull();
+  });
+
+  it('rejects the day before 1950-01-01', () => {
+    expect(validateHireDate('1949-12-31', TODAY)).toMatch(/1950-01-01/);
+  });
+
+  it('rejects a date after today', () => {
+    expect(validateHireDate('2026-10-25', TODAY)).toMatch(/future/i);
+  });
+
+  it.each(['2026-02-30', 'yesterday', '2026-1-5', 20260101])(
+    'rejects %s as not a real date',
+    (value) => {
+      expect(validateHireDate(value, TODAY)).toMatch(/valid date/i);
+    },
+  );
+});
+
+describe('validateEmployeeFields', () => {
+  it('returns normalised fields for valid input', () => {
+    const result = validateEmployeeFields(
+      aValidInput({
+        fullName: '  Asha Rao ',
+        email: '  Asha.Rao@ACME.example ',
+        jobTitle: ' Software Engineer  ',
+        annualSalary: '1850000',
+      }),
+      { today: TODAY },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      fields: {
+        fullName: 'Asha Rao',
+        email: 'asha.rao@acme.example',
+        jobTitle: 'Software Engineer',
+        department: 'Engineering',
+        countryCode: 'IN',
+        employmentType: 'Full-time',
+        hireDate: '2024-03-01',
+        annualSalary: 1_850_000,
+      },
+    });
+  });
+
+  it('reports every invalid field at once, keyed by request field name', () => {
+    const result = validateEmployeeFields(
+      {
+        fullName: '   ',
+        email: 'nope',
+        jobTitle: '',
+        department: 'Astrology',
+        country: 'XX',
+        annualSalary: 0,
+        employmentType: '',
+        hireDate: '2999-01-01',
+      },
+      { today: TODAY },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fieldErrors).sort()).toEqual([
+      'annualSalary',
+      'country',
+      'department',
+      'email',
+      'employmentType',
+      'fullName',
+      'hireDate',
+      'jobTitle',
+    ]);
+  });
+
+  it('reports every field as required for an empty input', () => {
+    const result = validateEmployeeFields({}, { today: TODAY });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fieldErrors)).toHaveLength(8);
+  });
+
+  it('checks the salary maximum against the chosen country', () => {
+    const result = validateEmployeeFields(
+      aValidInput({ country: 'US', annualSalary: 50_000_001 }),
+      {
+        today: TODAY,
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fieldErrors)).toEqual(['annualSalary']);
+  });
+});

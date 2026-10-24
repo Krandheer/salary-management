@@ -320,4 +320,15 @@ describe('EmployeeListPage search and filters', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
     expect(await screen.findByRole('textbox', { name: 'Search name' })).toBeInTheDocument();
   });
+
+  it('offers an "Add employee" link to the add form', async () => {
+    serveApi(() => aPage());
+
+    renderWithProviders(<EmployeeListPage />);
+
+    expect(await screen.findByRole('link', { name: 'Add employee' })).toHaveAttribute(
+      'href',
+      '/employees/new',
+    );
+  });
 });

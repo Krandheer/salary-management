@@ -1,6 +1,12 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { PAGE_SIZE, type EmployeeListPage, type JobTitleOptions } from '@acme/contracts';
+import {
+  PAGE_SIZE,
+  type ApiErrorBody,
+  type EmployeeDetail,
+  type EmployeeListPage,
+  type JobTitleOptions,
+} from '@acme/contracts';
 import { insertEmployee } from '../../test/builders.ts';
 import { createTestApp } from '../../test/testApp.ts';
 
@@ -426,5 +432,156 @@ describe('GET /api/employees/job-titles', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVALID_QUERY');
+  });
+});
+
+const validBody = {
+  fullName: '  Asha Rao ',
+  email: ' Asha.Rao@Acme.example ',
+  jobTitle: ' Software Engineer ',
+  department: 'Engineering',
+  country: 'IN',
+  annualSalary: 1_850_000,
+  employmentType: 'Full-time',
+  hireDate: '2024-03-01',
+};
+
+async function countEmployees(app: ReturnType<typeof createTestApp>['app']): Promise<number> {
+  return (await getPage(app)).body.total;
+}
+
+describe('POST /api/employees', () => {
+  it('creates the employee with trimmed fields and a lower-cased email, answering 201 with the detail', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app).post('/api/employees').send(validBody);
+
+    expect(response.status).toBe(201);
+    const detail = response.body as EmployeeDetail;
+    expect(detail).toMatchObject({
+      fullName: 'Asha Rao',
+      email: 'asha.rao@acme.example',
+      jobTitle: 'Software Engineer',
+      department: 'Engineering',
+      country: 'IN',
+      currency: 'INR',
+      currentSalary: 1_850_000,
+      employmentType: 'Full-time',
+      hireDate: '2024-03-01',
+      status: 'active',
+      exitDate: null,
+      linkedEmployments: [],
+    });
+  });
+
+  it('shows the new employee in the employee list', async () => {
+    const { app } = createTestApp();
+
+    await request(app).post('/api/employees').send(validBody);
+
+    const { body } = await getPage(app);
+    expect(body.items.map((item) => item.fullName)).toEqual(['Asha Rao']);
+  });
+
+  it('records the salary as the first history entry, effective on the hire date with the reason "Starting salary"', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app).post('/api/employees').send(validBody);
+
+    expect((response.body as EmployeeDetail).salaryHistory).toEqual([
+      expect.objectContaining({
+        amount: 1_850_000,
+        currency: 'INR',
+        effectiveDate: '2024-03-01',
+        reason: 'Starting salary',
+      }),
+    ]);
+  });
+
+  it('accepts the salary typed as digits', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send({ ...validBody, annualSalary: '1850000' });
+
+    expect(response.status).toBe(201);
+    expect((response.body as EmployeeDetail).currentSalary).toBe(1_850_000);
+  });
+
+  it('answers 400 with a field error for every invalid field and saves nothing', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send({
+        ...validBody,
+        fullName: '   ',
+        email: 'nope',
+        annualSalary: 1.5,
+        hireDate: '2999-01-01',
+      });
+
+    expect(response.status).toBe(400);
+    const { code, fieldErrors } = (response.body as ApiErrorBody).error;
+    expect(code).toBe('VALIDATION_FAILED');
+    expect(Object.keys(fieldErrors ?? {}).sort()).toEqual([
+      'annualSalary',
+      'email',
+      'fullName',
+      'hireDate',
+    ]);
+    expect(await countEmployees(app)).toBe(0);
+  });
+
+  it('answers 400 for an empty body', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app).post('/api/employees').send({});
+
+    expect(response.status).toBe(400);
+    expect(Object.keys((response.body as ApiErrorBody).error.fieldErrors ?? {})).toHaveLength(8);
+  });
+
+  it('answers 409 EMAIL_TAKEN when an active employee has the email in any letter case', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, { email: 'asha.rao@acme.example' });
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send({ ...validBody, email: 'ASHA.RAO@acme.example' });
+
+    expect(response.status).toBe(409);
+    expect((response.body as ApiErrorBody).error.code).toBe('EMAIL_TAKEN');
+    expect(await countEmployees(app)).toBe(1);
+  });
+});
+
+describe('GET /api/employees/:id', () => {
+  it('returns the employee detail with its history newest first', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      fullName: 'Asha Rao',
+      salaryHistory: [
+        { amount: 80_000, effectiveDate: '2020-01-15', reason: 'Starting salary' },
+        { amount: 90_000, effectiveDate: '2022-01-01' },
+      ],
+    });
+
+    const response = await request(app).get(`/api/employees/${id}`);
+
+    expect(response.status).toBe(200);
+    const detail = response.body as EmployeeDetail;
+    expect(detail).toMatchObject({ id, fullName: 'Asha Rao', currentSalary: 90_000 });
+    expect(detail.salaryHistory.map((entry) => entry.amount)).toEqual([90_000, 80_000]);
+  });
+
+  it.each(['999', '0', '-1', 'abc', '1.5'])('answers 404 for id %s', async (id) => {
+    const { app } = createTestApp();
+
+    const response = await request(app).get(`/api/employees/${id}`);
+
+    expect(response.status).toBe(404);
+    expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
   });
 });
