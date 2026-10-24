@@ -7,8 +7,10 @@ import {
   type NewSalaryHistoryRow,
 } from '../db/schema.ts';
 import { currencyFor } from '../reference/referenceData.ts';
+import type { Clock } from '../shared/clock.ts';
 import { normalizeKey } from '../shared/text.ts';
-import type { SeedEmployee } from './generateEmployees.ts';
+import { generateSeedEmployees, type SeedEmployee } from './generateEmployees.ts';
+import { SEED_EMPLOYEE_COUNT, SEED_RANDOM_SEED } from './seedCatalogue.ts';
 
 const EMPLOYEE_CHUNK_SIZE = 500;
 const HISTORY_CHUNK_SIZE = 1000;
@@ -77,4 +79,20 @@ export function replaceAllEmployees(
       db.insert(salaryHistory).values(rows).run();
     }
   });
+}
+
+function hasNoEmployees(db: AppDatabase): boolean {
+  return db.select({ id: employees.id }).from(employees).limit(1).all().length === 0;
+}
+
+/** Seeds the demo data set only into an empty database; returns whether it seeded. */
+export function seedIfEmpty(db: AppDatabase, clock: Clock): boolean {
+  if (!hasNoEmployees(db)) return false;
+  const seeded = generateSeedEmployees({
+    count: SEED_EMPLOYEE_COUNT,
+    randomSeed: SEED_RANDOM_SEED,
+    today: clock.today(),
+  });
+  replaceAllEmployees(db, seeded, clock.now());
+  return true;
 }

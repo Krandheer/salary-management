@@ -1,0 +1,21 @@
+# Render Blueprint: one Docker web service serving the API and the web app.
+# No secrets are needed; the app has no external credentials.
+services:
+  - type: web
+    name: acme-salary-management
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: SEED_ON_EMPTY
+        value: 'true'
+      - key: DATABASE_PATH
+        value: /data/salary.db
+      - key: APP_TIMEZONE
+        value: UTC
+    # The SQLite file lives on this disk, so data survives deploys.
+    # Remove the disk on the free plan: the database is then recreated and re-seeded on every restart.
+    disk:
+      name: salary-data
+      mountPath: /data
+      sizeGB: 1

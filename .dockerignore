@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+web/dist
+**/dist
+**/coverage
+data
+*.db
+*.db-shm
+*.db-wal
+.git
+.github
+.claude
+docs
+*.log
+.DS_Store
