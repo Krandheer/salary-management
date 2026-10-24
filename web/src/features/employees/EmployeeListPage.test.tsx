@@ -203,7 +203,7 @@ describe('EmployeeListPage search and filters', () => {
     });
   }
 
-  it('requests the typed search text after a pause, not on every keystroke', async () => {
+  it('requests the typed search text once typing settles, not for each keystroke', async () => {
     const user = userEvent.setup();
     serveFiltered();
     renderWithProviders(<EmployeeListPage />);
@@ -213,7 +213,9 @@ describe('EmployeeListPage search and filters', () => {
 
     expect(await screen.findByText('Filtered Person')).toBeInTheDocument();
     const searchRequests = listCalls().filter((path) => path.includes('search='));
-    expect(searchRequests).toEqual(['/api/employees?search=ana&page=1']);
+    expect(searchRequests).toContain('/api/employees?search=ana&page=1');
+    expect(searchRequests).not.toContain('/api/employees?search=a&page=1');
+    expect(searchRequests).not.toContain('/api/employees?search=an&page=1');
   });
 
   it('requests the chosen country, department and job title', async () => {
@@ -307,7 +309,42 @@ describe('EmployeeListPage search and filters', () => {
     expect(await screen.findByText('Asha Rao')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search name' })).toHaveValue('');
     expect(screen.getByRole('combobox', { name: 'Country' })).toHaveTextContent('All countries');
-    expect(listCalls().at(-1)).toBe('/api/employees?page=1');
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?page=1'));
+  });
+
+  it('applies "Clear filters" at once, without a further request for the old search text', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+    await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'nobody');
+    await screen.findByText('No matching employees');
+    await user.click(screen.getByRole('combobox', { name: 'Country' }));
+    await user.click(screen.getByRole('option', { name: 'India' }));
+    await waitFor(() =>
+      expect(listCalls().at(-1)).toBe('/api/employees?search=nobody&country=IN&page=1'),
+    );
+    const callsBeforeClear = listCalls().length;
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await screen.findByText('Asha Rao');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(listCalls().slice(callsBeforeClear)).toEqual(['/api/employees?page=1']);
+  });
+
+  it('stays on the current page while the search text is still being typed', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(listCalls().at(-1)).toContain('page=2'));
+    const callsBeforeTyping = listCalls().length;
+
+    await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'ana');
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?search=ana&page=1'));
+
+    expect(listCalls().slice(callsBeforeTyping)).toEqual(['/api/employees?search=ana&page=1']);
   });
 
   it('keeps the filters visible when the list fails to load', async () => {
