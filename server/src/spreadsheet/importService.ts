@@ -3,6 +3,7 @@ import type { EmployeeRepository } from '../employees/employeeRepository.ts';
 import type { Clock } from '../shared/clock.ts';
 import { ImportNotAppliedError, ImportRejectedError } from '../shared/errors.ts';
 import { classifyImportRows, type ImportOperation, type ImportPlan } from './importClassifier.ts';
+import { buildImportSnapshot } from './importSnapshot.ts';
 import { parseImportRow, type ParsedImportRow } from './importRowParser.ts';
 import { readImportFile } from './workbookReader.ts';
 
@@ -51,7 +52,7 @@ export class ImportService {
   }
 
   private planImport(rows: ParsedImportRow[]): ImportPlan {
-    return classifyImportRows(rows, this.employees.loadImportSnapshot());
+    return classifyImportRows(rows, buildImportSnapshot(this.employees.listStoredEmployees()));
   }
 
   /** Must run inside the transaction: the snapshot it plans against is the one it writes to. */

@@ -5,7 +5,8 @@ import { generateSeedEmployees } from '../src/seed/generateEmployees.ts';
 import { SEED_RANDOM_SEED } from '../src/seed/seedCatalogue.ts';
 import { ImportFileError } from '../src/shared/errors.ts';
 import { MAX_IMPORT_ROWS, readImportFile } from '../src/spreadsheet/workbookReader.ts';
-import { buildEmployeesWorkbook, type ExportRow } from '../src/spreadsheet/workbookWriter.ts';
+import type { ExportRow } from '../src/employees/employeeReadModels.ts';
+import { buildEmployeesWorkbook } from '../src/spreadsheet/workbookWriter.ts';
 import { anImportRow, buildImportFile } from '../test/importWorkbook.ts';
 import { rewritePart } from '../test/zipArchive.ts';
 

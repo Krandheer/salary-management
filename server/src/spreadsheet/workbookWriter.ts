@@ -1,23 +1,11 @@
 import ExcelJS from 'exceljs';
+import type { ExportRow } from '../employees/employeeReadModels.ts';
 import { COUNTRIES, DEPARTMENTS, EMPLOYMENT_TYPES } from '../reference/referenceData.ts';
 import { ALLOWED_VALUES_SHEET, TEMPLATE_COLUMNS, type TemplateField } from './templateColumns.ts';
 
 const EMPLOYEES_SHEET = 'Employees';
 const SALARY_FORMAT = '0';
 const HIRE_DATE_FORMAT = 'yyyy-mm-dd';
-
-/** One exported employee; the country is shown by name, as in the template. */
-export interface ExportRow {
-  fullName: string;
-  email: string;
-  jobTitle: string;
-  department: string;
-  countryName: string;
-  currency: string;
-  annualSalary: number;
-  employmentType: string;
-  hireDate: string;
-}
 
 const FIELD_OF_COLUMN: Record<TemplateField, (row: ExportRow) => string | number | Date> = {
   fullName: (row) => row.fullName,

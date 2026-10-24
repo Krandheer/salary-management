@@ -2,7 +2,8 @@ import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { COUNTRIES, DEPARTMENTS, EMPLOYMENT_TYPES } from '../reference/referenceData.ts';
 import { ALLOWED_VALUES_SHEET, TEMPLATE_COLUMNS } from './templateColumns.ts';
-import { buildEmployeesWorkbook, buildTemplateWorkbook, type ExportRow } from './workbookWriter.ts';
+import type { ExportRow } from '../employees/employeeReadModels.ts';
+import { buildEmployeesWorkbook, buildTemplateWorkbook } from './workbookWriter.ts';
 
 const EXPECTED_HEADERS = [
   'Full Name',

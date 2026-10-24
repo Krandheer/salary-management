@@ -13,10 +13,9 @@ import type {
 import type { AppDatabase } from '../db/database.ts';
 import { currentSalaries, employees, salaryHistory, type EmployeeRow } from '../db/schema.ts';
 import { currencyFor, findCountry } from '../reference/referenceData.ts';
-import type { ExistingEmployee, ImportSnapshot } from '../spreadsheet/importClassifier.ts';
-import type { ExportRow } from '../spreadsheet/workbookWriter.ts';
 import { normalizeKey } from '../shared/text.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
+import type { ExportRow, StoredEmployee } from './employeeReadModels.ts';
 import type { EmployeeFields } from './employeeValidation.ts';
 
 export const STARTING_SALARY_REASON = 'Starting salary';
@@ -54,7 +53,7 @@ export function toEmployeeSummary(row: EmployeeSummaryRow): EmployeeSummary {
 }
 
 /** The WHERE condition for the employees in view; every value is a bound parameter. */
-export function buildFilterConditions(filters: EmployeeFilters): SQL | undefined {
+function buildFilterConditions(filters: EmployeeFilters): SQL | undefined {
   const { status, searchKey, country, department, jobTitleKey } = filters;
   return and(
     eq(employees.status, status),
@@ -103,16 +102,24 @@ function toEmployeeFields(employee: EmployeeRow, currentSalary: number): Employe
   };
 }
 
-/** Records must arrive most recent exit first, so each email's inactive list keeps that order. */
-function addToSnapshot(
-  snapshot: ImportSnapshot,
-  status: EmployeeStatus,
-  existing: ExistingEmployee,
-): void {
-  const match = snapshot.get(existing.fields.email) ?? { active: null, inactive: [] };
-  if (status === 'active') match.active = existing;
-  else match.inactive.push(existing);
-  snapshot.set(existing.fields.email, match);
+interface StoredEmployeeQueryRow {
+  employee: EmployeeRow;
+  currentSalary: number;
+  currentCurrency: string;
+  currentSalaryDate: IsoDate;
+  earliestSalaryDate: IsoDate | null;
+}
+
+function toStoredEmployee(row: StoredEmployeeQueryRow): StoredEmployee {
+  return {
+    id: row.employee.id,
+    status: row.employee.status,
+    fields: toEmployeeFields(row.employee, row.currentSalary),
+    currentCurrency: row.currentCurrency as CurrencyCode,
+    currentSalaryDate: row.currentSalaryDate,
+    earliestSalaryDate: row.earliestSalaryDate ?? row.employee.hireDate,
+    exitDate: row.employee.exitDate,
+  };
 }
 
 const LINK_COLUMNS = {
@@ -306,58 +313,15 @@ export class EmployeeRepository {
   }
 
   getEditableState(id: number): EditableState | null {
-    const row = this.db
-      .select({
-        employee: employees,
-        currentSalary: currentSalaries.amount,
-        currentSalaryDate: currentSalaries.effectiveDate,
-        earliestSalaryDate: min(salaryHistory.effectiveDate),
-      })
-      .from(employees)
-      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
-      .innerJoin(salaryHistory, eq(salaryHistory.employeeId, employees.id))
-      .where(eq(employees.id, id))
-      .groupBy(employees.id)
-      .get();
-    if (!row?.earliestSalaryDate) return null;
-    return {
-      status: row.employee.status,
-      earliestSalaryDate: row.earliestSalaryDate,
-      currentSalaryDate: row.currentSalaryDate,
-      fields: toEmployeeFields(row.employee, row.currentSalary),
-    };
+    const row = this.selectStoredEmployees(eq(employees.id, id)).get();
+    if (!row) return null;
+    const { status, fields, earliestSalaryDate, currentSalaryDate } = toStoredEmployee(row);
+    return { status, fields, earliestSalaryDate, currentSalaryDate };
   }
 
-  /**
-   * Every stored employee by email, in one query: the active record, and every inactive record,
-   * most recent exit first (on a tie, the later record). Each carries its current salary and
-   * earliest salary date.
-   */
-  loadImportSnapshot(): ImportSnapshot {
-    const rows = this.db
-      .select({
-        employee: employees,
-        currentSalary: currentSalaries.amount,
-        currentCurrency: currentSalaries.currency,
-        earliestSalaryDate: min(salaryHistory.effectiveDate),
-      })
-      .from(employees)
-      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
-      .innerJoin(salaryHistory, eq(salaryHistory.employeeId, employees.id))
-      .groupBy(employees.id)
-      .orderBy(desc(employees.exitDate), desc(employees.id))
-      .all();
-    const snapshot: ImportSnapshot = new Map();
-    for (const row of rows) {
-      addToSnapshot(snapshot, row.employee.status, {
-        id: row.employee.id,
-        fields: toEmployeeFields(row.employee, row.currentSalary),
-        currentCurrency: row.currentCurrency as CurrencyCode,
-        earliestSalaryDate: row.earliestSalaryDate ?? row.employee.hireDate,
-        exitDate: row.employee.exitDate,
-      });
-    }
-    return snapshot;
+  /** Every stored employee, active or not, with its current salary and earliest salary date; unordered. */
+  listStoredEmployees(): StoredEmployee[] {
+    return this.selectStoredEmployees().all().map(toStoredEmployee);
   }
 
   /** Overwrites the employee's own fields (not the salary) and refreshes the search keys. */
@@ -415,6 +379,23 @@ export class EmployeeRepository {
       salaryHistory: this.listSalaryHistory(id),
       linkedEmployments: this.listLinkedEmployments(row.email, id),
     };
+  }
+
+  /** One row per employee (optionally just those matching the condition) with the facts of a StoredEmployee. */
+  private selectStoredEmployees(condition?: SQL) {
+    return this.db
+      .select({
+        employee: employees,
+        currentSalary: currentSalaries.amount,
+        currentCurrency: currentSalaries.currency,
+        currentSalaryDate: currentSalaries.effectiveDate,
+        earliestSalaryDate: min(salaryHistory.effectiveDate),
+      })
+      .from(employees)
+      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
+      .innerJoin(salaryHistory, eq(salaryHistory.employeeId, employees.id))
+      .where(condition)
+      .groupBy(employees.id);
   }
 
   private listSalaryHistory(employeeId: number): SalaryHistoryEntry[] {
