@@ -388,3 +388,29 @@ describe('EmployeeListPage search and filters', () => {
     );
   });
 });
+
+describe('EmployeeListPage export', () => {
+  it('offers an Export link that downloads the whole current view without a page', async () => {
+    serveApi(() => aPage());
+    renderWithProviders(<EmployeeListPage />);
+
+    const link = await screen.findByRole('link', { name: /Export/ });
+
+    expect(link).toHaveAttribute('href', '/api/exports/employees');
+  });
+
+  it('adds the current search and the inactive setting to the Export link', async () => {
+    serveApi(() => aPage());
+    const user = userEvent.setup();
+    renderWithProviders(<EmployeeListPage />);
+    await user.type(await screen.findByLabelText('Search name'), 'ash');
+    await user.click(screen.getByRole('switch', { name: 'Show inactive employees' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Export/ })).toHaveAttribute(
+        'href',
+        '/api/exports/employees?search=ash&status=inactive',
+      ),
+    );
+  });
+});
