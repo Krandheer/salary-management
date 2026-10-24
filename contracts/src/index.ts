@@ -165,3 +165,15 @@ export interface CountryInsight extends SalaryStats {
 export interface CountryInsights {
   countries: CountryInsight[];
 }
+
+export interface JobTitleInsight extends SalaryStats {
+  jobTitle: string;
+}
+
+/** Active employees of one country grouped by job title, ordered A to Z; empty when it has none. */
+export interface CountryJobTitleInsights {
+  country: CountryCode;
+  countryName: string;
+  currency: CurrencyCode;
+  jobTitles: JobTitleInsight[];
+}
