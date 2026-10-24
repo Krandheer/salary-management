@@ -253,7 +253,7 @@ Nothing is saved in this slice. The HR Manager can check a file and see exactly 
 -   [x] Every form field has a visible label, and every validation error appears as text next to its field, not shown by colour alone.
 -   [x] Every action (paging, filters, forms, delete, export, import) can be completed by clicking with a mouse or tapping.
 -   [x] Every action can also be completed using only the keyboard, with a visible focus indicator. (keyboard tests: list filters/paging, add form, delete dialog, import confirm; the focus ring itself is verified in the browser pass)
--   [ ] Layouts work at widths of 768px and above without horizontal scrolling of the page. (verified in browser pass)
+-   [x] Layouts work at widths of 768px and above without horizontal scrolling of the page. (Verified in the browser pass on 2026-10-24: `scrollWidth` equals the 768px viewport on the list, detail, insights and import pages, measured in a same-origin 768px frame; wide tables scroll inside their own container.)
 
 <!-- -------- bee-comment -------- -->
 
