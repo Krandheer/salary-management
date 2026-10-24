@@ -27,9 +27,13 @@ export class EmployeeInactiveError extends Error {
 
 export class NotFoundError extends Error {}
 
+/** The uploaded file as a whole can't be imported; the message tells the HR Manager why. */
 export class ImportFileError extends Error {
-  constructor(readonly code: ImportFileErrorCode) {
-    super(`Import file rejected: ${code}`);
+  constructor(
+    readonly code: ImportFileErrorCode,
+    message = `Import file rejected: ${code}`,
+  ) {
+    super(message);
   }
 }
 

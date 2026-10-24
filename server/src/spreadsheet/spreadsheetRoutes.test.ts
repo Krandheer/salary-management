@@ -281,6 +281,35 @@ describe('POST /api/imports/preview', () => {
     expect(countRows(db)).toEqual(before);
   });
 
+  it('compares a row for a twice-departed employee with their most recent inactive record', async () => {
+    const { app, db } = createTestApp();
+    const email = 'twice@acme.example';
+    const record = {
+      fullName: 'Tess Twice',
+      email,
+      status: 'inactive',
+      countryCode: 'US',
+    } as const;
+    const latestId = insertEmployee(db, {
+      ...record,
+      hireDate: '2020-01-15',
+      exitDate: '2024-06-30',
+    });
+    insertEmployee(db, { ...record, hireDate: '2015-02-01', exitDate: '2018-12-31' });
+    const rowFor = (hireDate: string) =>
+      anImportRow({ ...US_ROW, fullName: 'Tess Twice', email, annualSalary: 85_000, hireDate });
+    const content = await buildImportFile([rowFor('2020-01-15')]);
+    const olderRecord = await buildImportFile([rowFor('2015-02-01')]);
+
+    const latest = (await postPreview(app, content)).body as ImportPreview;
+    const older = (await postPreview(app, olderRecord)).body as ImportPreview;
+
+    expect(latest.totals.unchanged).toBe(1);
+    expect(older.errors[0]!.messages).toEqual([
+      `Work Email: Employee #${latestId} is inactive and can't be changed; a rehire needs a hire date after their exit date (2024-06-30)`,
+    ]);
+  });
+
   it('rejects a file that is not .xlsx with a message', async () => {
     const { app } = createTestApp();
 

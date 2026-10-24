@@ -151,6 +151,12 @@ describe('parseImportRow: Currency', () => {
     expect(messagesOf(parsed)).toEqual(['Currency: Currency must be INR for India']);
   });
 
+  it('rejects a country code in place of the country name', () => {
+    const parsed = parseImportRow(aRawRow({ country: 'IN' }), TODAY);
+
+    expect(messagesOf(parsed)).toEqual(['Country: Country must be one of the listed options']);
+  });
+
   it('does not judge the currency when the country is not recognised', () => {
     const parsed = parseImportRow(aRawRow({ country: 'Narnia', currency: 'NAR' }), TODAY);
 

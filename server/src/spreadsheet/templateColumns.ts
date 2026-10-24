@@ -29,3 +29,12 @@ export const TEMPLATE_COLUMNS: readonly TemplateColumn[] = [
 ];
 
 export const ALLOWED_VALUES_SHEET = 'Allowed values';
+
+const HEADER_OF = Object.fromEntries(
+  TEMPLATE_COLUMNS.map(({ key, header }) => [key, header]),
+) as Record<TemplateField, string>;
+
+/** An import message about one column, prefixed with that column's header. */
+export function columnMessage(key: TemplateField, message: string): string {
+  return `${HEADER_OF[key]}: ${message}`;
+}

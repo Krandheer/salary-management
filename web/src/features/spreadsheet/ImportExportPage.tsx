@@ -2,6 +2,7 @@ import { Download } from 'lucide-react';
 import { buildExportUrl, TEMPLATE_DOWNLOAD_URL } from '@/api/spreadsheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ImportPanel } from './ImportPanel';
 
 export function ImportExportPage() {
   return (
@@ -30,6 +31,7 @@ export function ImportExportPage() {
           </Button>
         </CardContent>
       </Card>
+      <ImportPanel />
     </div>
   );
 }

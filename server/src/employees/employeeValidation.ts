@@ -131,6 +131,15 @@ export function validateRehireHireDate(
   return `Hire date must be after the previous exit date (${latestInactiveExitDate})`;
 }
 
+/** An existing employee's hire date can't move past their earliest salary history entry. */
+export function validateHireDateAgainstHistory(
+  hireDate: IsoDate,
+  earliestSalaryDate: IsoDate,
+): string | null {
+  if (hireDate <= earliestSalaryDate) return null;
+  return `Hire date cannot be later than the earliest salary entry (${earliestSalaryDate})`;
+}
+
 /** The integer a salary input stands for, or null when it is not a whole number. */
 export function toWholeNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null;
@@ -268,13 +277,11 @@ function collectEditOnlyErrors(
     errors[SALARY_CHANGE_AMOUNT] = 'Enter a new salary when the country changes';
   }
   const hireDate = merged.hireDate;
-  if (
-    !fieldErrors.hireDate &&
-    typeof hireDate === 'string' &&
-    hireDate > context.earliestSalaryDate
-  ) {
-    errors.hireDate = `Hire date cannot be later than the earliest salary entry (${context.earliestSalaryDate})`;
-  }
+  const historyError =
+    !fieldErrors.hireDate && typeof hireDate === 'string'
+      ? validateHireDateAgainstHistory(hireDate, context.earliestSalaryDate)
+      : null;
+  if (historyError) errors.hireDate = historyError;
   return errors;
 }
 

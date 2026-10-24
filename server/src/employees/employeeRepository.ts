@@ -11,8 +11,9 @@ import type {
   SalaryHistoryEntry,
 } from '@acme/contracts';
 import type { AppDatabase } from '../db/database.ts';
-import { currentSalaries, employees, salaryHistory } from '../db/schema.ts';
+import { currentSalaries, employees, salaryHistory, type EmployeeRow } from '../db/schema.ts';
 import { currencyFor, findCountry } from '../reference/referenceData.ts';
+import type { ExistingEmployee, ImportSnapshot } from '../spreadsheet/importClassifier.ts';
 import type { ExportRow } from '../spreadsheet/workbookWriter.ts';
 import { normalizeKey } from '../shared/text.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
@@ -86,6 +87,37 @@ export interface SalaryEntryInput {
   currency: CurrencyCode;
   effectiveDate: IsoDate;
   reason: string | null;
+}
+
+function toEmployeeFields(employee: EmployeeRow, currentSalary: number): EmployeeFields {
+  return {
+    fullName: employee.fullName,
+    email: employee.email,
+    jobTitle: employee.jobTitle,
+    department: employee.department,
+    countryCode: employee.countryCode as CountryCode,
+    employmentType: employee.employmentType,
+    hireDate: employee.hireDate,
+    annualSalary: currentSalary,
+  };
+}
+
+/** Of two inactive records with one email, the later exit wins; on a tie, the later record. */
+function isLaterExit(candidate: ExistingEmployee, current: ExistingEmployee | null): boolean {
+  if (current === null) return true;
+  const [candidateExit, currentExit] = [candidate.exitDate ?? '', current.exitDate ?? ''];
+  return candidateExit === currentExit ? candidate.id > current.id : candidateExit > currentExit;
+}
+
+function addToSnapshot(
+  snapshot: ImportSnapshot,
+  status: EmployeeStatus,
+  existing: ExistingEmployee,
+): void {
+  const match = snapshot.get(existing.fields.email) ?? { active: null, latestInactive: null };
+  if (status === 'active') match.active = existing;
+  else if (isLaterExit(existing, match.latestInactive)) match.latestInactive = existing;
+  snapshot.set(existing.fields.email, match);
 }
 
 const LINK_COLUMNS = {
@@ -292,21 +324,41 @@ export class EmployeeRepository {
       .groupBy(employees.id)
       .get();
     if (!row?.earliestSalaryDate) return null;
-    const { employee } = row;
     return {
-      status: employee.status,
+      status: row.employee.status,
       earliestSalaryDate: row.earliestSalaryDate,
-      fields: {
-        fullName: employee.fullName,
-        email: employee.email,
-        jobTitle: employee.jobTitle,
-        department: employee.department,
-        countryCode: employee.countryCode as CountryCode,
-        employmentType: employee.employmentType,
-        hireDate: employee.hireDate,
-        annualSalary: row.currentSalary,
-      },
+      fields: toEmployeeFields(row.employee, row.currentSalary),
     };
+  }
+
+  /**
+   * Every stored employee by email, in one query: the active record, and the inactive record
+   * with the latest exit date. Each carries its current salary and earliest salary date.
+   */
+  loadImportSnapshot(): ImportSnapshot {
+    const rows = this.db
+      .select({
+        employee: employees,
+        currentSalary: currentSalaries.amount,
+        currentCurrency: currentSalaries.currency,
+        earliestSalaryDate: min(salaryHistory.effectiveDate),
+      })
+      .from(employees)
+      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
+      .innerJoin(salaryHistory, eq(salaryHistory.employeeId, employees.id))
+      .groupBy(employees.id)
+      .all();
+    const snapshot: ImportSnapshot = new Map();
+    for (const row of rows) {
+      addToSnapshot(snapshot, row.employee.status, {
+        id: row.employee.id,
+        fields: toEmployeeFields(row.employee, row.currentSalary),
+        currentCurrency: row.currentCurrency as CurrencyCode,
+        earliestSalaryDate: row.earliestSalaryDate ?? row.employee.hireDate,
+        exitDate: row.employee.exitDate,
+      });
+    }
+    return snapshot;
   }
 
   /** Overwrites the employee's own fields (not the salary) and refreshes the search keys. */

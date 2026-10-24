@@ -216,20 +216,20 @@ Deleting never erases data. It sets the employee's status to **inactive**, with 
 
 Nothing is saved in this slice. The HR Manager can check a file and see exactly what an import would do.
 
--   [ ] HR Manager can upload an `.xlsx` file and see a preview that counts the rows that would be created, updated, left unchanged, or rejected with errors.
--   [ ] Rows are matched to **active** employees by work email, ignoring letter case. A row matching an active employee counts as an update, and an email no employee has counts as a create.
--   [ ] A row whose values all equal the matched employee's current values counts as unchanged, not as an update.
--   [ ] A row whose email belongs only to inactive employees counts as unchanged when every value equals the most recent inactive record. This keeps re-imported exports of inactive employees from changing anything.
--   [ ] A row whose email belongs only to inactive employees, with a hire date after the most recent inactive record's exit date, counts as a create (rehire). The preview names the inactive record it will be linked to.
--   [ ] For each row to be updated, the preview lists every field that would change, with its old and new value.
--   [ ] Each row with errors shows its spreadsheet row number (the header is row 1) and every problem found, using the shared validation rules.
--   [ ] Shows an error on a row whose currency doesn't match its country's currency.
--   [ ] Shows an error on every row whose email appears on more than one row in the file, ignoring letter case.
--   [ ] Shows an error on any other row whose email belongs only to inactive employees. The error explains that inactive records can't be changed, and that a rehire needs a hire date after the exit date.
--   [ ] Rejects the whole file with a message when it is not an `.xlsx` file, or when its first sheet's header row doesn't match the template columns in order, ignoring letter case and surrounding spaces.
--   [ ] Rejects the whole file with a message when it is larger than 10 MB, has more than 20,000 data rows, or has no data rows.
--   [ ] Rows with every cell empty are skipped, and sheets after the first one are ignored.
--   [ ] Previewing a 10,000-row file finishes within 30 seconds.
+-   [x] HR Manager can upload an `.xlsx` file and see a preview that counts the rows that would be created, updated, left unchanged, or rejected with errors.
+-   [x] Rows are matched to **active** employees by work email, ignoring letter case. A row matching an active employee counts as an update, and an email no employee has counts as a create.
+-   [x] A row whose values all equal the matched employee's current values counts as unchanged, not as an update.
+-   [x] A row whose email belongs only to inactive employees counts as unchanged when every value equals the most recent inactive record. This keeps re-imported exports of inactive employees from changing anything.
+-   [x] A row whose email belongs only to inactive employees, with a hire date after the most recent inactive record's exit date, counts as a create (rehire). The preview names the inactive record it will be linked to.
+-   [x] For each row to be updated, the preview lists every field that would change, with its old and new value.
+-   [x] Each row with errors shows its spreadsheet row number (the header is row 1) and every problem found, using the shared validation rules.
+-   [x] Shows an error on a row whose currency doesn't match its country's currency.
+-   [x] Shows an error on every row whose email appears on more than one row in the file, ignoring letter case.
+-   [x] Shows an error on any other row whose email belongs only to inactive employees. The error explains that inactive records can't be changed, and that a rehire needs a hire date after the exit date.
+-   [x] Rejects the whole file with a message when it is not an `.xlsx` file, or when its first sheet's header row doesn't match the template columns in order, ignoring letter case and surrounding spaces.
+-   [x] Rejects the whole file with a message when it is larger than 10 MB, has more than 20,000 data rows, or has no data rows.
+-   [x] Rows with every cell empty are skipped, and sheets after the first one are ignored.
+-   [x] Previewing a 10,000-row file finishes within 30 seconds.
 
 ## Slice 12: Excel import, part 2: confirm & apply (all or nothing)
 
