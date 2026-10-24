@@ -124,8 +124,23 @@ class SharedStringEntry {
 }
 
 /**
+ * A full import is 20,001 rows (the header and 20,000 data rows) of nine columns: at most 180,009
+ * distinct strings, plus the few dozen of the template's Allowed values sheet. 250,000 leaves room
+ * for other sheets' text. Every entry costs far more memory than its bytes (`<si/>` is five bytes),
+ * so the 24 MB uncompressed limit alone would let a table of millions of entries through.
+ */
+const MAX_SHARED_STRINGS = 250_000;
+
+function entryAfter(strings: readonly SharedString[]): SharedStringEntry {
+  if (strings.length === MAX_SHARED_STRINGS) {
+    throw new MalformedXlsxError(`More than ${MAX_SHARED_STRINGS} shared strings`);
+  }
+  return new SharedStringEntry();
+}
+
+/**
  * The shared-strings table, read as exceljs's SharedStringsXform reads it, or null when the
- * workbook has none. Its size is bounded by the uncompressed-size check made before it is read.
+ * workbook has none. A table of more than `MAX_SHARED_STRINGS` entries is malformed.
  */
 export async function readSharedStrings(
   entry: JSZip.JSZipObject | undefined,
@@ -136,7 +151,7 @@ export async function readSharedStrings(
   await parseXmlEntry(entry, {
     onOpen(tag) {
       if (current) current.open(tag);
-      else if (tag.name === 'si') current = new SharedStringEntry();
+      else if (tag.name === 'si') current = entryAfter(strings);
       else if (tag.name !== 'sst') throw new MalformedXlsxError(`Unexpected <${tag.name}>`);
     },
     onText(text) {

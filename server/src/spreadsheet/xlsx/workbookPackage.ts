@@ -1,4 +1,4 @@
-import JSZip from 'jszip';
+import type JSZip from 'jszip';
 import type { CellValueContext } from './cellValues.ts';
 import { readDateStyles } from './dateStyles.ts';
 import { readSharedStrings } from './sharedStrings.ts';
@@ -101,12 +101,12 @@ function firstWorksheetPart(
 }
 
 /**
- * Opens an .xlsx and finds its first worksheet without unzipping it, along with what its cells
- * need to be read: shared strings, which styles are dates, and the date system. Only these few
- * parts are parsed; nothing builds a workbook model. Resolves to null when there is no worksheet.
+ * Finds an .xlsx archive's first worksheet without unzipping it, along with what its cells need
+ * to be read: shared strings, which styles are dates, and the date system. Only these few parts
+ * are parsed; nothing builds a workbook model. Resolves to null when there is no worksheet.
  */
-export async function openFirstWorksheet(content: Buffer): Promise<FirstWorksheet | null> {
-  const parts = partsByName(await JSZip.loadAsync(content));
+export async function openFirstWorksheet(archive: JSZip): Promise<FirstWorksheet | null> {
+  const parts = partsByName(archive);
   const workbook = await readWorkbookPart(parts.get(WORKBOOK_PART));
   const targets = await readRelationshipTargets(parts.get(WORKBOOK_RELATIONSHIPS_PART));
   const entry = firstWorksheetPart(workbook, targets, parts);

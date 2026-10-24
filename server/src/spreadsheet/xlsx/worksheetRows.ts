@@ -46,10 +46,21 @@ export function columnOfReference(reference: string): number {
   return column;
 }
 
-/** exceljs keeps a row only when its `r` is a usable array index; others vanish from the sheet. */
-function rowNumberOf(attribute: string | undefined): number | null {
-  const rowNumber = parseInt(attribute ?? '', 10);
-  return rowNumber >= 1 && rowNumber - 1 <= LAST_ROW_INDEX ? rowNumber : null;
+/**
+ * A row's number: its `r`, or, as OOXML allows a writer to leave `r` out, the one after the
+ * previous row's. Rows must come in increasing order. exceljs instead dropped a row whose `r` was
+ * missing or unusable and kept two rows of the same number, so rows vanished or repeated without a
+ * word; here either makes the sheet malformed. The upper bound is the array index exceljs allows.
+ */
+function rowNumberOf(attribute: string | undefined, previousRowNumber: number): number {
+  const rowNumber = attribute === undefined ? previousRowNumber + 1 : parseInt(attribute, 10);
+  if (!(rowNumber >= 1 && rowNumber - 1 <= LAST_ROW_INDEX)) {
+    throw new MalformedXlsxError(`Invalid row number ${attribute}`);
+  }
+  if (rowNumber <= previousRowNumber) {
+    throw new MalformedXlsxError(`Row ${rowNumber} after row ${previousRowNumber}`);
+  }
+  return rowNumber;
 }
 
 /**
@@ -124,15 +135,18 @@ class CellReader {
 
 /** A `<row>` being read; its cells land by column, a later cell replacing an earlier one. */
 class RowReader {
-  private readonly rowNumber: number | null;
+  private readonly rowNumber: number;
   private readonly cells = new Map<number, ExcelJS.CellValue>();
   private previousColumn: number | null = null;
 
-  constructor(tag: XmlTag) {
-    this.rowNumber = rowNumberOf(tag.attributes.r);
+  constructor(tag: XmlTag, previousRowNumber: number) {
+    this.rowNumber = rowNumberOf(tag.attributes.r, previousRowNumber);
   }
 
-  /** A cell without a reference follows the previous one, as exceljs's Row model assumes. */
+  /**
+   * A cell without a reference follows the previous one, as exceljs's Row model assumes; one that
+   * would land past the last column is malformed, as one with such a reference is.
+   */
   addCell(cell: CellReader, context: CellValueContext): void {
     if (cell.isPlaceholder()) return;
     const column = this.columnOf(cell);
@@ -144,11 +158,14 @@ class RowReader {
     if (cell.reference) return columnOfReference(cell.reference);
     if (this.previousColumn === null)
       throw new MalformedXlsxError('A first cell without a reference');
+    if (this.previousColumn === LAST_COLUMN) {
+      throw new MalformedXlsxError('A cell without a reference past the last column');
+    }
     return this.previousColumn + 1;
   }
 
-  toWorksheetRow(): WorksheetRow | null {
-    return this.rowNumber === null ? null : { rowNumber: this.rowNumber, cells: this.cells };
+  toWorksheetRow(): WorksheetRow {
+    return { rowNumber: this.rowNumber, cells: this.cells };
   }
 }
 
@@ -157,8 +174,8 @@ class RowReader {
  * keeping none of them; reading stops at `</sheetData>`, so merges, hyperlinks and the rest of the
  * sheet are never parsed. `onRow` may throw to stop reading at once. Cell values are the ones
  * exceljs's full workbook model would give, except that a merged range is not copied into the
- * cells it covers, and elements exceljs does not expect inside a row or cell are skipped rather
- * than cutting the sheet short.
+ * cells it covers, elements exceljs does not expect inside a row or cell are skipped rather
+ * than cutting the sheet short, and rows are numbered as `rowNumberOf` describes.
  */
 export async function readWorksheetRows(
   entry: JSZip.JSZipObject,
@@ -168,6 +185,7 @@ export async function readWorksheetRows(
   let isInSheetData = false;
   let isSheetDataRead = false;
   let row: RowReader | null = null;
+  let previousRowNumber = 0;
   let cell: CellReader | null = null;
   await parseXmlEntry(entry, {
     onOpen(tag) {
@@ -175,7 +193,7 @@ export async function readWorksheetRows(
       else if (row) {
         if (tag.name === 'c') cell = new CellReader(tag);
       } else if (isInSheetData) {
-        if (tag.name === 'row') row = new RowReader(tag);
+        if (tag.name === 'row') row = new RowReader(tag, previousRowNumber);
       } else if (tag.name === 'sheetData') isInSheetData = true;
     },
     onText(text) {
@@ -190,8 +208,9 @@ export async function readWorksheetRows(
       } else if (row) {
         if (tag.name !== 'row') return;
         const finishedRow = row.toWorksheetRow();
+        previousRowNumber = finishedRow.rowNumber;
         row = null;
-        if (finishedRow) onRow(finishedRow);
+        onRow(finishedRow);
       } else if (isInSheetData && tag.name === 'sheetData') {
         isSheetDataRead = true;
       }

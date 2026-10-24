@@ -1,10 +1,11 @@
 import type ExcelJS from 'exceljs';
+import type JSZip from 'jszip';
 import { ImportFileError } from '../shared/errors.ts';
 import { normalizeKey } from '../shared/text.ts';
 import { HEADER_ROW_NUMBER, TEMPLATE_COLUMNS } from './templateColumns.ts';
 import { openFirstWorksheet, type FirstWorksheet } from './xlsx/workbookPackage.ts';
 import { readWorksheetRows, type WorksheetRow } from './xlsx/worksheetRows.ts';
-import { checkUncompressedSize } from './zipSizeGuard.ts';
+import { openArchiveWithinLimits } from './zipSizeGuard.ts';
 
 /** A cell as the import reads it: rich text, hyperlinks and formulas reduced to plain values. */
 export type RawCellValue = string | number | Date | null;
@@ -22,10 +23,16 @@ export const MAX_IMPORT_BYTES = MAX_IMPORT_MEGABYTES * 1024 * 1024;
  * Measured: a 20,000-row export of seeded employees unzips to 8.4 MiB (8,783,316 bytes), and the
  * review measured 9.4 MB for its 20,000-row template file. 24 MiB is about 2.5 times the larger
  * figure: room for longer values and the markup Excel adds when it saves, and a firm bound on
- * the shared strings the reader holds and on the bytes it unzips.
+ * the bytes the reader unzips and the text it holds.
  */
 const MAX_UNCOMPRESSED_MEGABYTES = 24;
 export const MAX_UNCOMPRESSED_BYTES = MAX_UNCOMPRESSED_MEGABYTES * 1024 * 1024;
+/**
+ * A workbook saved by Excel has a few dozen parts (sheets, styles, theme, document properties,
+ * one part per chart, image or comment set); 1,000 is far beyond any template-shaped file, and
+ * each entry costs memory when the zip's directory is read.
+ */
+const MAX_ARCHIVE_ENTRIES = 1_000;
 
 const NO_CELLS: ReadonlyMap<number, ExcelJS.CellValue> = new Map();
 const XLSX_FILE_NAME = /\.xlsx$/i;
@@ -51,9 +58,13 @@ function headerKeyOf(value: RawCellValue): string {
   return normalizeKey(value instanceof Date ? value.toISOString() : String(value));
 }
 
+function invalidFileError(reason: string): ImportFileError {
+  return new ImportFileError('INVALID_FILE', reason);
+}
+
 function rejectUnlessXlsxName(fileName: string): void {
   if (!XLSX_FILE_NAME.test(fileName)) {
-    throw new ImportFileError('INVALID_FILE', 'The file must be an Excel workbook (.xlsx)');
+    throw invalidFileError('The file must be an Excel workbook (.xlsx)');
   }
 }
 
@@ -69,29 +80,39 @@ function rejectIfTooLarge(content: Buffer): void {
 }
 
 function unreadableWorkbookError(): ImportFileError {
-  return new ImportFileError('INVALID_FILE', 'The file could not be read as an Excel workbook');
+  return invalidFileError('The file could not be read as an Excel workbook');
 }
 
-/** Checked before any part is parsed: it bounds both the unzipping and the strings held in memory. */
-async function rejectIfTooLargeUncompressed(content: Buffer): Promise<void> {
-  const check = await checkUncompressedSize(content, MAX_UNCOMPRESSED_BYTES);
-  if (check === 'unreadable') throw unreadableWorkbookError();
-  if (check === 'too-large') {
-    throw new ImportFileError(
-      'INVALID_FILE',
-      `The file is too large when uncompressed (over ${MAX_UNCOMPRESSED_MEGABYTES} MB)`,
-    );
+/** Checked before any part is parsed: it bounds the zip directory, the unzipping and the text held. */
+async function openArchive(content: Buffer): Promise<JSZip> {
+  const opening = await openArchiveWithinLimits(content, {
+    maxEntries: MAX_ARCHIVE_ENTRIES,
+    maxUncompressedBytes: MAX_UNCOMPRESSED_BYTES,
+  });
+  switch (opening.outcome) {
+    case 'opened':
+      return opening.archive;
+    case 'unreadable':
+      throw unreadableWorkbookError();
+    case 'too-large':
+      throw invalidFileError(
+        `The file is too large when uncompressed (over ${MAX_UNCOMPRESSED_MEGABYTES} MB)`,
+      );
+    case 'too-many-entries':
+      throw invalidFileError(
+        `The file has too many parts to be an Excel workbook (over ${MAX_ARCHIVE_ENTRIES.toLocaleString('en-US')})`,
+      );
   }
 }
 
-async function openFirstSheet(content: Buffer): Promise<FirstWorksheet> {
+async function openFirstSheet(archive: JSZip): Promise<FirstWorksheet> {
   let sheet: FirstWorksheet | null;
   try {
-    sheet = await openFirstWorksheet(content);
+    sheet = await openFirstWorksheet(archive);
   } catch {
     throw unreadableWorkbookError();
   }
-  if (!sheet) throw new ImportFileError('INVALID_FILE', 'The workbook has no sheets');
+  if (!sheet) throw invalidFileError('The workbook has no sheets');
   return sheet;
 }
 
@@ -172,13 +193,15 @@ async function readSheetRows(sheet: FirstWorksheet): Promise<RawImportRow[]> {
 
 /**
  * Reads the first sheet of an uploaded .xlsx into raw rows. The sheet is streamed row by row and
- * no workbook model is built, so memory stays bounded by the rows kept (at most 20,000) whatever
- * the file holds. Throws `ImportFileError` when the file as a whole can't be imported: wrong
- * type, too large (as uploaded or once unzipped), wrong header row, too many rows or none.
+ * no workbook model is built. Memory is bounded by limits, not by streaming alone: 10 MB uploaded,
+ * 1,000 zip entries, 24 MB unzipped in total, and, in every part, 64 levels of nesting and 64
+ * attributes per element, 250,000 shared strings, 16,384 columns a row, and the 20,000 rows kept.
+ * Throws `ImportFileError` when the file as a
+ * whole can't be imported: wrong type, too large (as uploaded or once unzipped), too many parts,
+ * malformed or past a limit, wrong header row, too many rows or none.
  */
 export async function readImportFile(content: Buffer, fileName: string): Promise<RawImportRow[]> {
   rejectUnlessXlsxName(fileName);
   rejectIfTooLarge(content);
-  await rejectIfTooLargeUncompressed(content);
-  return readSheetRows(await openFirstSheet(content));
+  return readSheetRows(await openFirstSheet(await openArchive(content)));
 }
