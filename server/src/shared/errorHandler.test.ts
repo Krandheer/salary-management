@@ -65,6 +65,19 @@ describe('errorHandler', () => {
     expect(response.body.error.preview).toEqual(REJECTED_PREVIEW);
   });
 
+  it('logs an import that was not applied together with its cause', async () => {
+    const logger = { error: vi.fn() };
+    const cause = new Error('disk I/O error');
+
+    const response = await request(appThrowing(new ImportNotAppliedError(cause), logger)).get(
+      '/boom',
+    );
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(response.body)).not.toContain('disk');
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ cause }));
+  });
+
   it('hides the details of an unknown error and logs it', async () => {
     const logger = { error: vi.fn() };
 

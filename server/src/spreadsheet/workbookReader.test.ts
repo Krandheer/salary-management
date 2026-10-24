@@ -1,10 +1,12 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { anImportRow, buildImportFile, TEMPLATE_HEADERS } from '../../test/importWorkbook.ts';
+import { withDeclaredUncompressedSizes } from '../../test/zipArchive.ts';
 import { ImportFileError } from '../shared/errors.ts';
 import {
   MAX_IMPORT_BYTES,
   MAX_IMPORT_ROWS,
+  MAX_UNCOMPRESSED_BYTES,
   readCellValue,
   readImportFile,
 } from './workbookReader.ts';
@@ -57,6 +59,17 @@ describe('readImportFile: the file itself', () => {
     const oversize = Buffer.alloc(MAX_IMPORT_BYTES + 1);
 
     await expectRejection(readImportFile(oversize, FILE_NAME), 'FILE_TOO_LARGE');
+  });
+
+  it('rejects a workbook that would be larger than 100 MB once unzipped', async () => {
+    const zipBomb = withDeclaredUncompressedSizes(
+      await buildImportFile([anImportRow()]),
+      () => MAX_UNCOMPRESSED_BYTES,
+    );
+
+    const error = await expectRejection(readImportFile(zipBomb, FILE_NAME), 'INVALID_FILE');
+
+    expect(error.message).toBe('The file is too large when uncompressed (over 100 MB)');
   });
 });
 

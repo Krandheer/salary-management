@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ImportPreview } from '@acme/contracts';
 import { renderWithProviders } from '../../../test/render';
 import { ImportPreviewView } from './ImportPreviewView';
@@ -52,9 +52,15 @@ function manyCreates(count: number): ImportPreview['creates'] {
   }));
 }
 
+function renderPreview(preview: ImportPreview, { onConfirm = vi.fn(), isConfirming = false } = {}) {
+  return renderWithProviders(
+    <ImportPreviewView preview={preview} onConfirm={onConfirm} isConfirming={isConfirming} />,
+  );
+}
+
 describe('ImportPreviewView', () => {
   it('shows the count of each outcome with its label', () => {
-    renderWithProviders(<ImportPreviewView preview={aPreview()} />);
+    renderPreview(aPreview());
 
     const totals = screen.getByRole('list', { name: 'Import totals' });
     expect(
@@ -65,7 +71,7 @@ describe('ImportPreviewView', () => {
   });
 
   it('opens on the errors, showing each row number with every message', () => {
-    renderWithProviders(<ImportPreviewView preview={aPreview()} />);
+    renderPreview(aPreview());
 
     const errors = screen.getByRole('tabpanel', { name: /Errors/ });
     expect(within(errors).getByText('Row 6')).toBeInTheDocument();
@@ -80,7 +86,7 @@ describe('ImportPreviewView', () => {
 
   it('lists every field an update changes, from the old value to the new one', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<ImportPreviewView preview={aPreview()} />);
+    renderPreview(aPreview());
 
     await user.click(screen.getByRole('tab', { name: /Updates/ }));
 
@@ -95,7 +101,7 @@ describe('ImportPreviewView', () => {
 
   it('names the inactive record a rehire will be linked to', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<ImportPreviewView preview={aPreview()} />);
+    renderPreview(aPreview());
 
     await user.click(screen.getByRole('tab', { name: /Creates/ }));
 
@@ -109,18 +115,14 @@ describe('ImportPreviewView', () => {
   });
 
   it('opens on the first group that has rows when there are no errors', () => {
-    renderWithProviders(<ImportPreviewView preview={aPreview({ errors: [], updates: [] })} />);
+    renderPreview(aPreview({ errors: [], updates: [] }));
 
     expect(screen.getByRole('tab', { name: /Creates/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('shows 50 rows per page and pages through the rest', async () => {
     const user = userEvent.setup();
-    renderWithProviders(
-      <ImportPreviewView
-        preview={aPreview({ errors: [], updates: [], creates: manyCreates(120) })}
-      />,
-    );
+    renderPreview(aPreview({ errors: [], updates: [], creates: manyCreates(120) }));
 
     const creates = screen.getByRole('tabpanel', { name: /Creates/ });
     const bodyRows = () => within(creates).getAllByRole('row').slice(1);
@@ -136,12 +138,38 @@ describe('ImportPreviewView', () => {
   });
 
   it('does not show paging when a group fits on one page', () => {
-    renderWithProviders(<ImportPreviewView preview={aPreview()} />);
+    renderPreview(aPreview());
 
     const errors = screen.getByRole('tabpanel', { name: /Errors/ });
     expect(within(errors).getByText('Row 6')).toBeInTheDocument();
     expect(
       within(errors).queryByRole('navigation', { name: 'Pagination' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers "Confirm import" when no row has errors, and confirming calls back', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    renderPreview(aPreview({ errors: [] }), { onConfirm });
+
+    await user.click(screen.getByRole('button', { name: 'Confirm import' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps "Confirm import" disabled and says why while any row has errors', () => {
+    renderPreview(aPreview());
+
+    const confirm = screen.getByRole('button', { name: 'Confirm import' });
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAccessibleDescription(
+      'Fix the rows with errors, then preview the file again to import it.',
+    );
+  });
+
+  it('disables "Confirm import" while the import is being saved', () => {
+    renderPreview(aPreview({ errors: [] }), { isConfirming: true });
+
+    expect(screen.getByRole('button', { name: 'Confirm import' })).toBeDisabled();
   });
 });
