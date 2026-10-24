@@ -95,6 +95,13 @@ export interface LinkedEmployment {
   status: EmployeeStatus;
 }
 
+/** What the add form learns about an email before saving: who holds it now, and who held it before. */
+export interface EmailCheckResult {
+  activeEmployeeId: number | null;
+  /** Most recent exit first. */
+  inactiveEmployees: LinkedEmployment[];
+}
+
 export interface EmployeeDetail extends EmployeeSummary {
   email: string;
   employmentType: string;

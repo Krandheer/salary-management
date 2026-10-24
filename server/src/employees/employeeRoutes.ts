@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { JobTitleOptions } from '@acme/contracts';
+import type { EmailCheckResult, JobTitleOptions } from '@acme/contracts';
 import { NotFoundError } from '../shared/errors.ts';
 import { parseEmployeeFilters, parseEmployeeListQuery } from './employeeListQuery.ts';
 import type { EmployeeService } from './employeeService.ts';
@@ -25,6 +25,10 @@ export function employeeRouter(service: EmployeeService): Router {
     const jobTitles = service.listJobTitleOptions(parseEmployeeFilters(req.query));
     res.json({ jobTitles } satisfies JobTitleOptions);
   });
+  router.get('/api/employees/email-check', (req, res) => {
+    const email = typeof req.query.email === 'string' ? req.query.email : '';
+    res.json(service.checkEmail(email) satisfies EmailCheckResult);
+  });
   router.post('/api/employees', (req, res) => {
     res.status(201).json(service.createEmployee(toInputRecord(req.body)));
   });
@@ -33,6 +37,9 @@ export function employeeRouter(service: EmployeeService): Router {
   });
   router.patch('/api/employees/:id', (req, res) => {
     res.json(service.updateEmployee(parseEmployeeId(req.params.id), toInputRecord(req.body)));
+  });
+  router.delete('/api/employees/:id', (req, res) => {
+    res.json(service.deleteEmployee(parseEmployeeId(req.params.id), req.query.exitDate));
   });
   return router;
 }

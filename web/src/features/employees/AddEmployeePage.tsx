@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { FieldErrors } from '@acme/contracts';
-import { createEmployee } from '@/api/employees';
+import type { FieldErrors, LinkedEmployment } from '@acme/contracts';
+import { checkEmail, createEmployee } from '@/api/employees';
 import { queryKeys } from '@/api/queryKeys';
 import { useReference } from '@/api/reference';
 import { ErrorState, LoadingState } from '@/shared/StateViews';
 import { EmployeeForm } from './EmployeeForm';
+import { RehireNotice } from './RehireNotice';
 import { toFieldErrors } from './saveErrors';
 import {
   EMPTY_EMPLOYEE_FORM,
@@ -21,6 +22,20 @@ export function AddEmployeePage() {
   const reference = useReference();
   const [serverErrors, setServerErrors] = useState<FieldErrors>();
   const create = useMutation({ mutationFn: createEmployee });
+  const [earlierRecords, setEarlierRecords] = useState<LinkedEmployment[]>([]);
+  const latestCheckedEmail = useRef('');
+
+  const lookUpEarlierRecords = async (email: string) => {
+    latestCheckedEmail.current = email;
+    if (!email.trim()) return setEarlierRecords([]);
+    try {
+      const result = await checkEmail(email);
+      if (latestCheckedEmail.current === email) setEarlierRecords(result.inactiveEmployees);
+    } catch {
+      // The notice is a courtesy; saving still validates the email on the server.
+      if (latestCheckedEmail.current === email) setEarlierRecords([]);
+    }
+  };
 
   const save = async (values: EmployeeFormValues) => {
     try {
@@ -58,6 +73,8 @@ export function AddEmployeePage() {
           reference={reference.data}
           onSubmit={save}
           submitting={create.isPending}
+          onEmailBlur={(email) => void lookUpEarlierRecords(email)}
+          emailNotice={earlierRecords.length > 0 && <RehireNotice earlier={earlierRecords} />}
           serverErrors={serverErrors}
         />
       )}

@@ -1,4 +1,10 @@
-import { PAGE_SIZE, type EmployeeDetail, type EmployeeListPage } from '@acme/contracts';
+import {
+  PAGE_SIZE,
+  type EmailCheckResult,
+  type IsoDate,
+  type EmployeeDetail,
+  type EmployeeListPage,
+} from '@acme/contracts';
 import { currencyFor } from '../reference/referenceData.ts';
 import type { Clock } from '../shared/clock.ts';
 import {
@@ -12,9 +18,12 @@ import type { EditableState, EmployeeRepository } from './employeeRepository.ts'
 import {
   validateEmployeeFields,
   validateEmployeeUpdate,
+  validateExitDate,
+  validateRehireHireDate,
   type EmployeeFields,
   type ValidSalaryChange,
 } from './employeeValidation.ts';
+import { normalizeKey } from '../shared/text.ts';
 import { compareTitles, pickDisplayTitle } from './jobTitles.ts';
 
 function groupSpellingsByKey(
@@ -58,8 +67,24 @@ export class EmployeeService {
     if (this.repository.findActiveIdByEmail(validation.fields.email) !== null) {
       throw new EmailTakenError();
     }
+    this.checkRehireHireDate(validation.fields);
     const id = this.repository.insertEmployee(validation.fields, this.clock.now());
     return this.getEmployee(id);
+  }
+
+  /** Soft delete: the record stays, inactive, with its exit date. A blank exit date means today. */
+  deleteEmployee(id: number, exitDate: unknown): EmployeeDetail {
+    this.repository.inTransaction(() => this.applyDeletion(id, exitDate));
+    return this.getEmployee(id);
+  }
+
+  /** Who holds this email now, and who held it before; the add form shows this before saving. */
+  checkEmail(email: string): EmailCheckResult {
+    const key = normalizeKey(email);
+    return {
+      activeEmployeeId: this.repository.findActiveIdByEmail(key),
+      inactiveEmployees: this.repository.findInactiveByEmail(key),
+    };
   }
 
   updateEmployee(id: number, patch: Record<string, unknown>): EmployeeDetail {
@@ -89,6 +114,21 @@ export class EmployeeService {
       const entry = { ...salaryChange, currency: currencyFor(fields.countryCode) };
       this.repository.insertSalaryEntry(id, entry, this.clock.now());
     }
+  }
+
+  private applyDeletion(id: number, exitDate: unknown): void {
+    const state = this.loadEditableState(id);
+    const today = this.clock.today();
+    const chosenDate = exitDate === undefined || exitDate === '' ? today : exitDate;
+    const error = validateExitDate(chosenDate, { today, hireDate: state.fields.hireDate });
+    if (error) throw new ValidationError({ exitDate: error });
+    this.repository.deactivate(id, chosenDate as IsoDate);
+  }
+
+  private checkRehireHireDate(fields: EmployeeFields): void {
+    const [latest] = this.repository.findInactiveByEmail(fields.email);
+    const error = validateRehireHireDate(fields.hireDate, latest?.exitDate ?? null);
+    if (error) throw new ValidationError({ hireDate: error });
   }
 
   private loadEditableState(id: number): EditableState {

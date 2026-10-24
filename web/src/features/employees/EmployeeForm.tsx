@@ -25,6 +25,10 @@ interface EmployeeFormProps {
   reference: ReferenceData;
   onSubmit: (values: EmployeeFormValues) => Promise<void>;
   submitting: boolean;
+  /** Called with the typed email when the field loses focus. */
+  onEmailBlur?: (email: string) => void;
+  /** Shown under the email field, e.g. a rehire notice. */
+  emailNotice?: ReactNode;
   /** Messages from the server, shown next to the field they name. */
   serverErrors?: FieldErrors;
 }
@@ -79,6 +83,8 @@ export function EmployeeForm({
   reference,
   onSubmit,
   submitting,
+  onEmailBlur,
+  emailNotice,
   serverErrors,
 }: EmployeeFormProps) {
   const { register, control, handleSubmit, setError, setFocus, formState } =
@@ -142,7 +148,17 @@ export function EmployeeForm({
       <FieldSet>
         <FieldLegend>Identity</FieldLegend>
         {textField('fullName', 'Full name')}
-        {textField('email', 'Work email', { type: 'email', autoComplete: 'off' })}
+        <FormField name="email" label="Work email" error={messageFor('email')}>
+          {(aria) => (
+            <Input
+              {...aria}
+              {...register('email', { onBlur: (event) => onEmailBlur?.(event.target.value) })}
+              type="email"
+              autoComplete="off"
+            />
+          )}
+        </FormField>
+        {emailNotice}
       </FieldSet>
       <FieldSet>
         <FieldLegend>Role</FieldLegend>

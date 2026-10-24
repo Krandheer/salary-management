@@ -111,6 +111,26 @@ export function validateHireDate(value: unknown, today: IsoDate): string | null 
   return null;
 }
 
+/** An exit date is a real date between the hire date and today. */
+export function validateExitDate(
+  value: unknown,
+  context: { today: IsoDate; hireDate: IsoDate },
+): string | null {
+  if (!isIsoDate(value)) return 'Exit date must be a valid date';
+  if (value > context.today) return 'Exit date cannot be in the future';
+  if (value < context.hireDate) return 'Exit date cannot be before the hire date';
+  return null;
+}
+
+/** A returning employee must start after the exit date of their most recent earlier record. */
+export function validateRehireHireDate(
+  hireDate: IsoDate,
+  latestInactiveExitDate: IsoDate | null,
+): string | null {
+  if (latestInactiveExitDate === null || hireDate > latestInactiveExitDate) return null;
+  return `Hire date must be after the previous exit date (${latestInactiveExitDate})`;
+}
+
 /** The integer a salary input stands for, or null when it is not a whole number. */
 export function toWholeNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null;

@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatSalary } from '@/shared/format';
+import { formatDate, formatSalary } from '@/shared/format';
 
 function TruncatedCell({ text }: { text: string }) {
   return (
@@ -17,7 +17,13 @@ function TruncatedCell({ text }: { text: string }) {
   );
 }
 
-export function EmployeeTable({ employees }: { employees: EmployeeSummary[] }) {
+interface EmployeeTableProps {
+  employees: EmployeeSummary[];
+  /** Inactive employees have left; the list then shows when. */
+  showExitDate?: boolean;
+}
+
+export function EmployeeTable({ employees, showExitDate = false }: EmployeeTableProps) {
   return (
     <Table>
       <TableHeader>
@@ -27,6 +33,7 @@ export function EmployeeTable({ employees }: { employees: EmployeeSummary[] }) {
           <TableHead className="px-3">Department</TableHead>
           <TableHead className="px-3">Country</TableHead>
           <TableHead className="px-3 text-right">Salary</TableHead>
+          {showExitDate && <TableHead className="px-3">Exit date</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -39,6 +46,11 @@ export function EmployeeTable({ employees }: { employees: EmployeeSummary[] }) {
             <TableCell className="px-3 py-2 text-right tabular-nums">
               {formatSalary(employee.currentSalary, employee.currency)}
             </TableCell>
+            {showExitDate && (
+              <TableCell className="px-3 py-2">
+                {employee.exitDate ? formatDate(employee.exitDate) : '—'}
+              </TableCell>
+            )}
           </TableRow>
         ))}
       </TableBody>

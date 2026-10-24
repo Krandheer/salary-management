@@ -138,19 +138,19 @@ Seeded database, then the API, then a paginated list in the UI.
 
 Deleting never erases data. It sets the employee's status to **inactive**, with an exit date. An inactive record is permanent and read-only: it is never restored. When someone comes back, HR adds them as a **new employee**, and the new record is linked to their earlier inactive record(s). Each period of employment keeps its own clean salary history.
 
--   [ ] Choosing "Delete" asks the HR Manager to confirm and to give an exit date, which defaults to today. The message explains that the record is kept as inactive.
--   [ ] After confirming, the employee's status is inactive with that exit date, and they no longer appear in the default list.
--   [ ] After confirming, the employee is no longer counted in any insight.
--   [ ] Cancelling the confirmation leaves the employee unchanged.
--   [ ] Turning on "Show inactive employees" lists only inactive employees, with an exit date column, and search and filters still apply.
--   [ ] An inactive employee's page shows an "Inactive" status, their exit date, all their details and their full salary history.
--   [ ] An inactive employee cannot be edited, have their salary changed, or be deleted again.
--   [ ] Adding a new employee with the email of an inactive employee is allowed. The form shows a notice naming that inactive employee before saving.
--   [ ] Shows an error when a rehire's hire date is on or before the exit date of the most recent inactive employee with the same email.
--   [ ] A rehired employee gets a new employee ID and a new salary history starting from their new hire date. The inactive record's details and history are unchanged.
--   [ ] An employee's page lists their linked employment records (the inactive record(s) and any later rehire), each with employee ID, hire date, exit date and status, and a link to open it.
--   [ ] Shows an error when the exit date is before the hire date or in the future.
--   [ ] Shows an error when deleting an employee who doesn't exist or is already inactive.
+-   [x] Choosing "Delete" asks the HR Manager to confirm and to give an exit date, which defaults to today. The message explains that the record is kept as inactive.
+-   [x] After confirming, the employee's status is inactive with that exit date, and they no longer appear in the default list.
+-   [x] After confirming, the employee is no longer counted in any insight.
+-   [x] Cancelling the confirmation leaves the employee unchanged.
+-   [x] Turning on "Show inactive employees" lists only inactive employees, with an exit date column, and search and filters still apply.
+-   [x] An inactive employee's page shows an "Inactive" status, their exit date, all their details and their full salary history.
+-   [x] An inactive employee cannot be edited, have their salary changed, or be deleted again.
+-   [x] Adding a new employee with the email of an inactive employee is allowed. The form shows a notice naming that inactive employee before saving.
+-   [x] Shows an error when a rehire's hire date is on or before the exit date of the most recent inactive employee with the same email.
+-   [x] A rehired employee gets a new employee ID and a new salary history starting from their new hire date. The inactive record's details and history are unchanged.
+-   [x] An employee's page lists their linked employment records (the inactive record(s) and any later rehire), each with employee ID, hire date, exit date and status, and a link to open it.
+-   [x] Shows an error when the exit date is before the hire date or in the future.
+-   [x] Shows an error when deleting an employee who doesn't exist or is already inactive.
 
 <!-- -------- bee-comment -------- -->
 

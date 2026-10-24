@@ -7,6 +7,7 @@ import type {
   EmployeeStatus,
   EmployeeSummary,
   IsoDate,
+  LinkedEmployment,
   SalaryHistoryEntry,
 } from '@acme/contracts';
 import type { AppDatabase } from '../db/database.ts';
@@ -72,6 +73,13 @@ export interface SalaryEntryInput {
   effectiveDate: IsoDate;
   reason: string | null;
 }
+
+const LINK_COLUMNS = {
+  id: employees.id,
+  hireDate: employees.hireDate,
+  exitDate: employees.exitDate,
+  status: employees.status,
+};
 
 export class EmployeeRepository {
   constructor(private readonly db: AppDatabase) {}
@@ -142,6 +150,35 @@ export class EmployeeRepository {
       )
       .get();
     return row?.id ?? null;
+  }
+
+  /** The inactive employees with this email (already lower-cased), most recent exit first. */
+  findInactiveByEmail(email: string): LinkedEmployment[] {
+    return this.db
+      .select(LINK_COLUMNS)
+      .from(employees)
+      .where(and(eq(employees.email, normalizeKey(email)), eq(employees.status, 'inactive')))
+      .orderBy(desc(employees.exitDate), desc(employees.id))
+      .all();
+  }
+
+  /** Every other employment record with this email, newest hire first. */
+  listLinkedEmployments(email: string, excludedId: number): LinkedEmployment[] {
+    return this.db
+      .select(LINK_COLUMNS)
+      .from(employees)
+      .where(and(eq(employees.email, normalizeKey(email)), ne(employees.id, excludedId)))
+      .orderBy(desc(employees.hireDate), desc(employees.id))
+      .all();
+  }
+
+  /** Marks the employee inactive with the exit date. There is no way back. */
+  deactivate(id: number, exitDate: IsoDate): void {
+    this.db
+      .update(employees)
+      .set({ status: 'inactive', exitDate })
+      .where(eq(employees.id, id))
+      .run();
   }
 
   /** Runs the work as one transaction; a throw undoes every write made inside it. */
@@ -269,7 +306,7 @@ export class EmployeeRepository {
       employmentType: row.employmentType,
       hireDate: row.hireDate,
       salaryHistory: this.listSalaryHistory(id),
-      linkedEmployments: [],
+      linkedEmployments: this.listLinkedEmployments(row.email, id),
     };
   }
 

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type {
   CreateEmployeeRequest,
+  EmailCheckResult,
   EmployeeDetail,
   EmployeeListPage,
   EmployeeListParams,
@@ -59,6 +60,16 @@ export function updateEmployee(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   });
+}
+
+export function deleteEmployee(id: number, exitDate: string): Promise<EmployeeDetail> {
+  return requestJson<EmployeeDetail>(`/api/employees/${id}${buildQueryString({ exitDate })}`, {
+    method: 'DELETE',
+  });
+}
+
+export function checkEmail(email: string): Promise<EmailCheckResult> {
+  return requestJson<EmailCheckResult>(`/api/employees/email-check${buildQueryString({ email })}`);
 }
 
 export function fetchEmployee(id: number): Promise<EmployeeDetail> {
