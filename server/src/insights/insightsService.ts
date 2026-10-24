@@ -11,20 +11,11 @@ import type {
 } from '@acme/contracts';
 import type { ActiveSalaryRow, EmployeeRepository } from '../employees/employeeRepository.ts';
 import { compareTitles, pickDisplayTitle } from '../employees/jobTitles.ts';
+import { groupBy } from '../shared/collections.ts';
 import { NotFoundError } from '../shared/errors.ts';
 import { RATES_AS_OF, RATES_SOURCE, findCountry, toUsdRates } from '../reference/referenceData.ts';
 import { averageInUsd } from './currencyConversion.ts';
 import { summarizeSalaries } from './statistics.ts';
-
-function groupAmountsByCountry(rows: readonly ActiveSalaryRow[]): Map<CountryCode, number[]> {
-  const amountsByCountry = new Map<CountryCode, number[]>();
-  for (const { countryCode, amount } of rows) {
-    const amounts = amountsByCountry.get(countryCode) ?? [];
-    amounts.push(amount);
-    amountsByCountry.set(countryCode, amounts);
-  }
-  return amountsByCountry;
-}
 
 function summarizeJobTitle(rows: readonly ActiveSalaryRow[]): JobTitleInsight {
   return {
@@ -33,35 +24,11 @@ function summarizeJobTitle(rows: readonly ActiveSalaryRow[]): JobTitleInsight {
   };
 }
 
-function groupByJobTitleKey(rows: readonly ActiveSalaryRow[]): ActiveSalaryRow[][] {
-  const rowsByKey = new Map<string, ActiveSalaryRow[]>();
-  for (const row of rows) {
-    const group = rowsByKey.get(row.jobTitleKey) ?? [];
-    group.push(row);
-    rowsByKey.set(row.jobTitleKey, group);
-  }
-  return [...rowsByKey.values()];
-}
-
-function groupRowsBy<K>(
-  rows: readonly ActiveSalaryRow[],
-  keyOf: (row: ActiveSalaryRow) => K,
-): Map<K, ActiveSalaryRow[]> {
-  const rowsByKey = new Map<K, ActiveSalaryRow[]>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const group = rowsByKey.get(key) ?? [];
-    group.push(row);
-    rowsByKey.set(key, group);
-  }
-  return rowsByKey;
-}
-
 function countryUsdComparisons(
   rows: readonly ActiveSalaryRow[],
   toUsd: Record<CurrencyCode, number>,
 ): CountryUsdComparison[] {
-  const comparisons = [...groupRowsBy(rows, (row) => row.countryCode)].map(
+  const comparisons = [...groupBy(rows, (row) => row.countryCode)].map(
     ([code, group]): CountryUsdComparison => {
       const country = findCountry(code)!;
       return {
@@ -79,7 +46,7 @@ function departmentUsdComparisons(
   rows: readonly ActiveSalaryRow[],
   toUsd: Record<CurrencyCode, number>,
 ): DepartmentUsdComparison[] {
-  const comparisons = [...groupRowsBy(rows, (row) => row.department)].map(
+  const comparisons = [...groupBy(rows, (row) => row.department)].map(
     ([department, group]): DepartmentUsdComparison => ({
       department,
       headcount: group.length,
@@ -93,14 +60,17 @@ export class InsightsService {
   constructor(private readonly employees: EmployeeRepository) {}
 
   countryInsights(): CountryInsights {
-    const amountsByCountry = groupAmountsByCountry(this.employees.listActiveCurrentSalaries());
-    const countries = [...amountsByCountry].map(([code, amounts]): CountryInsight => {
+    const rowsByCountry = groupBy(
+      this.employees.listActiveCurrentSalaries(),
+      (row) => row.countryCode,
+    );
+    const countries = [...rowsByCountry].map(([code, group]): CountryInsight => {
       const country = findCountry(code)!;
       return {
         country: country.code,
         countryName: country.name,
         currency: country.currency,
-        ...summarizeSalaries(amounts),
+        ...summarizeSalaries(group.map((row) => row.amount)),
       };
     });
     countries.sort((a, b) => a.countryName.localeCompare(b.countryName));
@@ -113,7 +83,9 @@ export class InsightsService {
     const countryRows = this.employees
       .listActiveCurrentSalaries()
       .filter((row) => row.countryCode === country.code);
-    const jobTitles = groupByJobTitleKey(countryRows).map(summarizeJobTitle);
+    const jobTitles = [...groupBy(countryRows, (row) => row.jobTitleKey).values()].map(
+      summarizeJobTitle,
+    );
     jobTitles.sort((a, b) => compareTitles(a.jobTitle, b.jobTitle));
     return {
       country: country.code,

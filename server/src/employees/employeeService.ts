@@ -23,18 +23,9 @@ import {
   type EmployeeFields,
   type ValidSalaryChange,
 } from './employeeValidation.ts';
+import { groupBy } from '../shared/collections.ts';
 import { normalizeKey } from '../shared/text.ts';
 import { compareTitles, pickDisplayTitle } from './jobTitles.ts';
-
-function groupSpellingsByKey(
-  rows: readonly { jobTitleKey: string; jobTitle: string }[],
-): Map<string, string[]> {
-  const spellingsByKey = new Map<string, string[]>();
-  for (const { jobTitleKey, jobTitle } of rows) {
-    spellingsByKey.set(jobTitleKey, [...(spellingsByKey.get(jobTitleKey) ?? []), jobTitle]);
-  }
-  return spellingsByKey;
-}
 
 /** Re-saving the same amount in the same country is not a change, so it leaves no history entry. */
 function isNewHistoryEntryNeeded(
@@ -62,8 +53,12 @@ export class EmployeeService {
 
   /** Each distinct job title of the employees in view once, A to Z. */
   listJobTitleOptions(filters: EmployeeFilters): string[] {
-    const spellingsByKey = groupSpellingsByKey(this.repository.listJobTitleSpellings(filters));
-    return [...spellingsByKey.values()].map(pickDisplayTitle).sort(compareTitles);
+    const rowsByKey = groupBy(
+      this.repository.listJobTitleSpellings(filters),
+      (row) => row.jobTitleKey,
+    );
+    const spellingsByKey = [...rowsByKey.values()].map((rows) => rows.map((row) => row.jobTitle));
+    return spellingsByKey.map(pickDisplayTitle).sort(compareTitles);
   }
 
   createEmployee(input: Record<string, unknown>): EmployeeDetail {
