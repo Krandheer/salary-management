@@ -233,18 +233,18 @@ Nothing is saved in this slice. The HR Manager can check a file and see exactly 
 
 ## Slice 12: Excel import, part 2: confirm & apply (all or nothing)
 
--   [ ] The "Confirm import" control is available only when the preview has no error rows.
--   [ ] Confirming saves every create and update together, then shows a summary of how many employees were created, updated and left unchanged.
--   [ ] If saving fails partway through, no rows are saved, and an error message says the import was not applied.
--   [ ] If the data has changed since the preview so that a row is now invalid, confirming saves nothing and shows the new errors.
--   [ ] An imported new employee gets a first salary history entry effective on their hire date, with the reason "Starting salary".
--   [ ] An imported rehire is created as a new employee linked to the inactive record(s) with the same email, and those inactive records are unchanged.
--   [ ] An updated row sets the employee's full name, job title, department, country, employment type and hire date to the row's values. The work email stays as it is, because it is the match key.
--   [ ] An updated row with a salary different from the current salary adds a history entry effective on the import date, with the reason "Excel import".
--   [ ] An updated row that changes the country adds a history entry in the new country's currency, even when the amount is unchanged.
--   [ ] An updated row with the same salary and country does not add a history entry.
--   [ ] Importing a file just exported from the tool, without changes, results in 0 created and 0 updated.
--   [ ] With 10,000 rows, confirming an import finishes within 30 seconds.
+-   [x] The "Confirm import" control is available only when the preview has no error rows.
+-   [x] Confirming saves every create and update together, then shows a summary of how many employees were created, updated and left unchanged.
+-   [x] If saving fails partway through, no rows are saved, and an error message says the import was not applied.
+-   [x] If the data has changed since the preview so that a row is now invalid, confirming saves nothing and shows the new errors.
+-   [x] An imported new employee gets a first salary history entry effective on their hire date, with the reason "Starting salary".
+-   [x] An imported rehire is created as a new employee linked to the inactive record(s) with the same email, and those inactive records are unchanged.
+-   [x] An updated row sets the employee's full name, job title, department, country, employment type and hire date to the row's values. The work email stays as it is, because it is the match key.
+-   [x] An updated row with a salary different from the current salary adds a history entry effective on the import date, with the reason "Excel import".
+-   [x] An updated row that changes the country adds a history entry in the new country's currency, even when the amount is unchanged.
+-   [x] An updated row with the same salary and country does not add a history entry.
+-   [x] Importing a file just exported from the tool, without changes, results in 0 created and 0 updated.
+-   [x] With 10,000 rows, confirming an import finishes within 30 seconds.
 
 ---
 

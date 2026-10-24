@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { CircleAlert, Equal, Pencil, Plus, type LucideIcon } from 'lucide-react';
+import { CircleAlert, Equal, Loader2, Pencil, Plus, Upload, type LucideIcon } from 'lucide-react';
 import type {
   ImportCreate,
   ImportPreview,
@@ -9,6 +9,7 @@ import type {
   ImportUpdate,
 } from '@acme/contracts';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -207,14 +208,60 @@ function CreateRows({ creates }: { creates: readonly ImportCreate[] }) {
   );
 }
 
-/** What an import would do, grouped by outcome. Nothing has been saved. */
-export function ImportPreviewView({ preview }: { preview: ImportPreview }) {
+/** Saving is possible only once no row has errors; the note says why it isn't yet. */
+function ConfirmImportBar({
+  hasErrors,
+  isConfirming,
+  onConfirm,
+}: {
+  hasErrors: boolean;
+  isConfirming: boolean;
+  onConfirm: () => void;
+}) {
+  const noteId = useId();
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button
+        type="button"
+        onClick={onConfirm}
+        disabled={hasErrors || isConfirming}
+        aria-describedby={hasErrors ? noteId : undefined}
+      >
+        {isConfirming ? (
+          <Loader2 className="animate-spin" aria-hidden="true" />
+        ) : (
+          <Upload aria-hidden="true" />
+        )}
+        Confirm import
+      </Button>
+      {hasErrors && (
+        <p id={noteId} className="text-muted-foreground">
+          Fix the rows with errors, then preview the file again to import it.
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface ImportPreviewViewProps {
+  preview: ImportPreview;
+  onConfirm: () => void;
+  isConfirming: boolean;
+}
+
+/** What an import would do, grouped by outcome. Nothing has been saved until it is confirmed. */
+export function ImportPreviewView({ preview, onConfirm, isConfirming }: ImportPreviewViewProps) {
   return (
     <section aria-labelledby="import-preview-heading" className="flex flex-col gap-4">
       <h2 id="import-preview-heading" className="text-xl font-semibold">
         Preview
       </h2>
       <ImportTotalsList totals={preview.totals} />
+      <ConfirmImportBar
+        hasErrors={preview.totals.error > 0}
+        isConfirming={isConfirming}
+        onConfirm={onConfirm}
+      />
       <Tabs defaultValue={firstGroupWithRows(preview)}>
         <TabsList>
           <TabsTrigger value="errors">{`Errors (${preview.errors.length})`}</TabsTrigger>

@@ -44,8 +44,9 @@ export class ImportRejectedError extends Error {
   }
 }
 
+/** Saving the import failed unexpectedly and was rolled back; `cause` is what went wrong. */
 export class ImportNotAppliedError extends Error {
-  constructor() {
-    super('The import could not be applied; no changes were made');
+  constructor(cause?: unknown) {
+    super('The import could not be applied; no changes were made', { cause });
   }
 }

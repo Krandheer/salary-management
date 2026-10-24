@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { ImportFileError } from '../shared/errors.ts';
 import { normalizeKey } from '../shared/text.ts';
 import { TEMPLATE_COLUMNS } from './templateColumns.ts';
+import { checkUncompressedSize } from './zipSizeGuard.ts';
 
 /** A cell as the import reads it: rich text, hyperlinks and formulas reduced to plain values. */
 export type RawCellValue = string | number | Date | null;
@@ -15,6 +16,9 @@ export interface RawImportRow {
 export const MAX_IMPORT_ROWS = 20_000;
 const MAX_IMPORT_MEGABYTES = 10;
 export const MAX_IMPORT_BYTES = MAX_IMPORT_MEGABYTES * 1024 * 1024;
+const MAX_UNCOMPRESSED_MEGABYTES = 100;
+/** A full 20,000-row workbook unzips to about 10 MB; far beyond that is a zip bomb. */
+export const MAX_UNCOMPRESSED_BYTES = MAX_UNCOMPRESSED_MEGABYTES * 1024 * 1024;
 
 const HEADER_ROW_NUMBER = 1;
 const XLSX_FILE_NAME = /\.xlsx$/i;
@@ -57,12 +61,28 @@ function rejectIfTooLarge(content: Buffer): void {
   if (content.length > MAX_IMPORT_BYTES) throw fileTooLargeError();
 }
 
+function unreadableWorkbookError(): ImportFileError {
+  return new ImportFileError('INVALID_FILE', 'The file could not be read as an Excel workbook');
+}
+
+/** exceljs unzips the whole workbook into memory, so its unzipped size is capped first. */
+async function rejectIfTooLargeUncompressed(content: Buffer): Promise<void> {
+  const check = await checkUncompressedSize(content, MAX_UNCOMPRESSED_BYTES);
+  if (check === 'unreadable') throw unreadableWorkbookError();
+  if (check === 'too-large') {
+    throw new ImportFileError(
+      'INVALID_FILE',
+      `The file is too large when uncompressed (over ${MAX_UNCOMPRESSED_MEGABYTES} MB)`,
+    );
+  }
+}
+
 async function loadFirstSheet(content: Buffer): Promise<ExcelJS.Worksheet> {
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(content as unknown as ExcelJS.Buffer);
   } catch {
-    throw new ImportFileError('INVALID_FILE', 'The file could not be read as an Excel workbook');
+    throw unreadableWorkbookError();
   }
   const [firstSheet] = workbook.worksheets;
   if (!firstSheet) throw new ImportFileError('INVALID_FILE', 'The workbook has no sheets');
@@ -112,11 +132,13 @@ function readDataRows(sheet: ExcelJS.Worksheet): RawImportRow[] {
 
 /**
  * Reads the first sheet of an uploaded .xlsx into raw rows. Throws `ImportFileError` when the
- * file as a whole can't be imported: wrong type, too large, wrong header row, too many rows or none.
+ * file as a whole can't be imported: wrong type, too large (as uploaded or once unzipped), wrong
+ * header row, too many rows or none.
  */
 export async function readImportFile(content: Buffer, fileName: string): Promise<RawImportRow[]> {
   rejectUnlessXlsxName(fileName);
   rejectIfTooLarge(content);
+  await rejectIfTooLargeUncompressed(content);
   const sheet = await loadFirstSheet(content);
   rejectUnlessTemplateHeaders(sheet);
   return readDataRows(sheet);

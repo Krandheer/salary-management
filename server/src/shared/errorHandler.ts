@@ -60,6 +60,7 @@ export function errorHandler(logger: ErrorLogger): ErrorRequestHandler {
   return (error, _req, res, _next) => {
     const known = toHttpFailure(error);
     if (known) {
+      if (known.status >= 500) logger.error(error);
       res.status(known.status).json(known.body);
       return;
     }

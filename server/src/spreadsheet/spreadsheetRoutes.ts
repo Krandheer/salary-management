@@ -63,5 +63,9 @@ export function spreadsheetRouter({ exportService, importService }: SpreadsheetS
     const file = uploadedFile(req);
     res.json(await importService.preview(file.buffer, file.originalname));
   });
+  router.post('/api/imports', receiveImportFile(), async (req, res) => {
+    const file = uploadedFile(req);
+    res.json(await importService.apply(file.buffer, file.originalname));
+  });
   return router;
 }
