@@ -9,7 +9,7 @@ const NAV_ITEMS: { to: string; label: string; icon: LucideIcon }[] = [
 
 export function AppLayout() {
   return (
-    <div className="grid min-h-screen grid-cols-[220px_1fr] grid-rows-[56px_1fr]">
+    <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)] grid-rows-[56px_1fr]">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-card focus:p-3"
@@ -34,7 +34,7 @@ export function AppLayout() {
           ))}
         </ul>
       </nav>
-      <main id="main-content" tabIndex={-1} className="max-w-[1280px] p-6">
+      <main id="main-content" tabIndex={-1} className="min-w-0 max-w-[1280px] p-6">
         <Outlet />
       </main>
     </div>
