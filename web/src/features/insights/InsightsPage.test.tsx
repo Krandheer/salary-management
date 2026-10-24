@@ -1,7 +1,12 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CountryInsight, CountryInsights, CountryJobTitleInsights } from '@acme/contracts';
+import type {
+  CountryInsight,
+  CountryInsights,
+  CountryJobTitleInsights,
+  OrganisationComparison,
+} from '@acme/contracts';
 import { aReference } from '../../../test/fixtures';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
@@ -256,6 +261,91 @@ describe('InsightsPage', () => {
       await user.click(await screen.findByRole('button', { name: 'View job titles for India' }));
 
       expect(await screen.findByText('No employees in this country')).toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('organisation comparison', () => {
+    function anOrganisation(
+      overrides: Partial<OrganisationComparison> = {},
+    ): OrganisationComparison {
+      return {
+        referenceCurrency: 'USD',
+        ratesAsOf: '2026-10-23',
+        ratesSource: 'https://example.test/rates',
+        toUsd: aReference().exchangeRates.toUsd,
+        byCountry: [
+          { country: 'GB', countryName: 'United Kingdom', headcount: 2, averageSalaryUsd: 120_000 },
+          { country: 'US', countryName: 'United States', headcount: 3, averageSalaryUsd: 95_000 },
+        ],
+        byDepartment: [
+          { department: 'Design', headcount: 1, averageSalaryUsd: 80_000 },
+          { department: 'Engineering', headcount: 4, averageSalaryUsd: 150_000 },
+        ],
+        ...overrides,
+      };
+    }
+
+    function serveOrganisation(comparison: OrganisationComparison) {
+      requestJsonMock.mockImplementation((url: string) => {
+        if (url === '/api/insights/organisation') return Promise.resolve(comparison);
+        return Promise.reject(new Error(`Unexpected ${url}`));
+      });
+    }
+
+    async function openOrganisationTab() {
+      const user = userEvent.setup();
+      renderWithProviders(<InsightsPage />);
+      await user.click(screen.getByRole('tab', { name: 'Organisation (USD)' }));
+    }
+
+    it('shows the headcount and average US dollar salary for each country', async () => {
+      serveOrganisation(anOrganisation());
+
+      await openOrganisationTab();
+
+      const ukRow = await screen.findByRole('row', { name: /United Kingdom/ });
+      expect(within(ukRow).getByText('2')).toBeInTheDocument();
+      expect(within(ukRow).getByText('USD 120,000')).toBeInTheDocument();
+      expect(requestJsonMock).toHaveBeenCalledWith('/api/insights/organisation');
+    });
+
+    it('shows the headcount and average US dollar salary for each department', async () => {
+      serveOrganisation(anOrganisation());
+
+      await openOrganisationTab();
+
+      const engineeringRow = await screen.findByRole('row', { name: /Engineering/ });
+      expect(within(engineeringRow).getByText('4')).toBeInTheDocument();
+      expect(within(engineeringRow).getByText('USD 150,000')).toBeInTheDocument();
+    });
+
+    it('shows the rates as of date and the rate used for each currency', async () => {
+      serveOrganisation(
+        anOrganisation({ toUsd: { ...aReference().exchangeRates.toUsd, GBP: 1.3 } }),
+      );
+
+      await openOrganisationTab();
+
+      expect(await screen.findByText(/as of 2026-10-23/)).toBeInTheDocument();
+      const gbpRow = screen.getByRole('row', { name: /GBP/ });
+      expect(within(gbpRow).getByText('1.300000')).toBeInTheDocument();
+    });
+
+    it('notes that converted figures are approximate', async () => {
+      serveOrganisation(anOrganisation());
+
+      await openOrganisationTab();
+
+      expect(await screen.findByText(/approximate/i)).toBeInTheDocument();
+    });
+
+    it('shows "No employees yet" when no group has active employees', async () => {
+      serveOrganisation(anOrganisation({ byCountry: [], byDepartment: [] }));
+
+      await openOrganisationTab();
+
+      expect(await screen.findByText('No employees yet')).toBeInTheDocument();
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
     });
   });

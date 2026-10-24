@@ -1,8 +1,13 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import type { CountryInsights, CountryJobTitleInsights } from '@acme/contracts';
+import type {
+  CountryInsights,
+  CountryJobTitleInsights,
+  OrganisationComparison,
+} from '@acme/contracts';
 import { insertEmployee } from '../../test/builders.ts';
 import { createTestApp } from '../../test/testApp.ts';
+import { RATES_AS_OF, RATES_SOURCE, toUsdRates } from '../reference/referenceData.ts';
 
 type TestApp = ReturnType<typeof createTestApp>;
 
@@ -372,5 +377,115 @@ describe('GET /api/insights/countries/:code/job-titles', () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('GET /api/insights/organisation', () => {
+  async function getOrganisation(app: TestApp['app']): Promise<OrganisationComparison> {
+    const response = await request(app).get('/api/insights/organisation');
+    expect(response.status).toBe(200);
+    return response.body as OrganisationComparison;
+  }
+
+  it('returns no groups when there are no employees', async () => {
+    const { app } = createTestApp();
+
+    const { byCountry, byDepartment } = await getOrganisation(app);
+
+    expect(byCountry).toEqual([]);
+    expect(byDepartment).toEqual([]);
+  });
+
+  it('gives the rates as of date, the source and the rate of every currency', async () => {
+    const { app } = createTestApp();
+
+    const comparison = await getOrganisation(app);
+
+    expect(comparison).toMatchObject({
+      referenceCurrency: 'USD',
+      ratesAsOf: RATES_AS_OF,
+      ratesSource: RATES_SOURCE,
+    });
+    expect(comparison.toUsd).toEqual(toUsdRates());
+  });
+
+  it('shows headcount and average US dollar salary per country, ordered by name', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, {
+      countryCode: 'US',
+      salaryHistory: [{ amount: 60_000, effectiveDate: '2020-01-15' }],
+    });
+    insertEmployee(db, {
+      countryCode: 'US',
+      salaryHistory: [{ amount: 80_000, effectiveDate: '2020-01-15' }],
+    });
+    insertEmployee(db, {
+      countryCode: 'GB',
+      salaryHistory: [{ amount: 100_000, effectiveDate: '2020-01-15', currency: 'GBP' }],
+    });
+
+    const { byCountry } = await getOrganisation(app);
+
+    expect(byCountry).toEqual([
+      { country: 'GB', countryName: 'United Kingdom', headcount: 1, averageSalaryUsd: 133_683 },
+      { country: 'US', countryName: 'United States', headcount: 2, averageSalaryUsd: 70_000 },
+    ]);
+  });
+
+  it('averages each department across countries after converting to US dollars', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, {
+      department: 'Engineering',
+      countryCode: 'US',
+      salaryHistory: [{ amount: 100_000, effectiveDate: '2020-01-15' }],
+    });
+    insertEmployee(db, {
+      department: 'Engineering',
+      countryCode: 'GB',
+      salaryHistory: [{ amount: 100_000, effectiveDate: '2020-01-15', currency: 'GBP' }],
+    });
+    insertEmployee(db, {
+      department: 'Sales',
+      countryCode: 'US',
+      salaryHistory: [{ amount: 50_000, effectiveDate: '2020-01-15' }],
+    });
+
+    const { byDepartment } = await getOrganisation(app);
+
+    expect(byDepartment).toEqual([
+      { department: 'Engineering', headcount: 2, averageSalaryUsd: 116_841 },
+      { department: 'Sales', headcount: 1, averageSalaryUsd: 50_000 },
+    ]);
+  });
+
+  it('rounds a half-way US dollar average up to the whole dollar', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, { salaryHistory: [{ amount: 60_001, effectiveDate: '2020-01-15' }] });
+    insertEmployee(db, { salaryHistory: [{ amount: 60_002, effectiveDate: '2020-01-15' }] });
+
+    const { byCountry } = await getOrganisation(app);
+
+    expect(byCountry[0]).toMatchObject({ headcount: 2, averageSalaryUsd: 60_002 });
+  });
+
+  it('excludes inactive employees and omits groups with no active employees', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, {
+      department: 'Engineering',
+      countryCode: 'US',
+      salaryHistory: [{ amount: 100_000, effectiveDate: '2020-01-15' }],
+    });
+    insertEmployee(db, {
+      department: 'Legal',
+      countryCode: 'IN',
+      status: 'inactive',
+      exitDate: '2024-01-01',
+      salaryHistory: [{ amount: 900_000, effectiveDate: '2020-01-15', currency: 'INR' }],
+    });
+
+    const { byCountry, byDepartment } = await getOrganisation(app);
+
+    expect(byCountry.map((row) => row.country)).toEqual(['US']);
+    expect(byDepartment.map((row) => row.department)).toEqual(['Engineering']);
   });
 });
