@@ -39,13 +39,21 @@ function toViewParams(filters: EmployeeFiltersValue): Omit<EmployeeListParams, '
   };
 }
 
+/** The page within the view; any change to the applied view (its key) returns to page 1. */
+function usePageOfView(viewKey: string): [number, (page: number) => void] {
+  const [pageOfView, setPageOfView] = useState({ viewKey, page: FIRST_PAGE });
+  if (pageOfView.viewKey !== viewKey) setPageOfView({ viewKey, page: FIRST_PAGE });
+  const page = pageOfView.viewKey === viewKey ? pageOfView.page : FIRST_PAGE;
+  return [page, (next) => setPageOfView({ viewKey, page: next })];
+}
+
 export function EmployeeListPage() {
   const [filters, setFilters] = useState(NO_FILTERS);
-  const [page, setPage] = useState(FIRST_PAGE);
   const [isShowingInactive, setIsShowingInactive] = useState(false);
-  const search = useDebouncedValue(filters.search, SEARCH_DEBOUNCE_MS);
+  const [search, applySearchNow] = useDebouncedValue(filters.search, SEARCH_DEBOUNCE_MS);
   const status: EmployeeStatus | undefined = isShowingInactive ? 'inactive' : undefined;
   const viewParams = { ...toViewParams({ ...filters, search }), status };
+  const [page, setPage] = usePageOfView(JSON.stringify(viewParams));
   const { data, isError, error, isPending, refetch } = useEmployeePage({ ...viewParams, page });
   const reference = useReference();
   const jobTitleOptions = useJobTitleOptions({
@@ -55,13 +63,9 @@ export function EmployeeListPage() {
     status,
   });
 
-  const changeFilters = (next: EmployeeFiltersValue) => {
-    setFilters(next);
-    setPage(FIRST_PAGE);
-  };
-  const toggleInactive = (isOn: boolean) => {
-    setIsShowingInactive(isOn);
-    setPage(FIRST_PAGE);
+  const clearFilters = () => {
+    setFilters(NO_FILTERS);
+    applySearchNow(NO_FILTERS.search);
   };
   const noMatchTitle = describeNoMatch(hasActiveFilters(filters), isShowingInactive);
 
@@ -81,14 +85,18 @@ export function EmployeeListPage() {
       {reference.data && (
         <EmployeeFilters
           value={filters}
-          onChange={changeFilters}
-          onClear={() => changeFilters(NO_FILTERS)}
+          onChange={setFilters}
+          onClear={clearFilters}
           reference={reference.data}
           jobTitleOptions={jobTitleOptions.data ?? []}
         />
       )}
       <div className="flex items-center gap-2">
-        <Switch id="show-inactive" checked={isShowingInactive} onCheckedChange={toggleInactive} />
+        <Switch
+          id="show-inactive"
+          checked={isShowingInactive}
+          onCheckedChange={setIsShowingInactive}
+        />
         <Label htmlFor="show-inactive">Show inactive employees</Label>
       </div>
       {isError && <ErrorState message={error.message} onRetry={() => void refetch()} />}

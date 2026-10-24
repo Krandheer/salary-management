@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-/** The latest `value`, once it has stopped changing for `delayMs`. */
-export function useDebouncedValue<T>(value: T, delayMs: number): T {
+/**
+ * The latest `value`, once it has stopped changing for `delayMs`, and a way to
+ * apply a value straight away (skipping the wait).
+ */
+export function useDebouncedValue<T>(value: T, delayMs: number): [T, (next: T) => void] {
   const [debounced, setDebounced] = useState(value);
 
   useEffect(() => {
@@ -9,5 +12,6 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
     return () => clearTimeout(timer);
   }, [value, delayMs]);
 
-  return debounced;
+  const applyNow = useCallback((next: T) => setDebounced(next), []);
+  return [debounced, applyNow];
 }
