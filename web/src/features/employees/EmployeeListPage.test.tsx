@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeListPage as EmployeeListData, EmployeeSummary } from '@acme/contracts';
 import { renderWithProviders } from '../../../test/render';
+import { aReference } from '../../../test/fixtures';
 import { ApiError, requestJson } from '@/api/http';
 import { EmployeeListPage } from './EmployeeListPage';
 
@@ -32,9 +33,27 @@ function aPage(overrides: Partial<EmployeeListData> = {}): EmployeeListData {
   return { items: [anEmployee()], page: 1, pageSize: 25, total: 1, totalPages: 1, ...overrides };
 }
 
+/** Routes reference and job-title requests to fixtures and employee-list requests to `serveList`. */
+function serveApi(
+  serveList: (path: string) => EmployeeListData | Promise<EmployeeListData>,
+  jobTitles: string[] = ['Analyst', 'Designer'],
+) {
+  requestJsonMock.mockImplementation(async (path: string) => {
+    if (path.startsWith('/api/reference')) return aReference();
+    if (path.startsWith('/api/employees/job-titles')) return { jobTitles };
+    return serveList(path);
+  });
+}
+
+function listCalls(): string[] {
+  return requestJsonMock.mock.calls
+    .map(([path]) => path)
+    .filter((path) => path.startsWith('/api/employees?') || path === '/api/employees');
+}
+
 /** Serves a two-page list (26 employees) keyed by the `page` query parameter. */
 function serveTwoPages() {
-  requestJsonMock.mockImplementation(async (path: string) => {
+  serveApi((path) => {
     const page = Number(new URL(path, 'http://localhost').searchParams.get('page') ?? '1');
     return page === 1
       ? aPage({ items: [anEmployee({ id: 1, fullName: 'Asha Rao' })], total: 26, totalPages: 2 })
@@ -53,7 +72,7 @@ beforeEach(() => {
 
 describe('EmployeeListPage', () => {
   it('shows each employee with name, job title, department, country and formatted salary', async () => {
-    requestJsonMock.mockResolvedValue(
+    serveApi(() =>
       aPage({
         items: [
           anEmployee(),
@@ -109,7 +128,7 @@ describe('EmployeeListPage', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     expect(await screen.findByText('Zed Young')).toBeInTheDocument();
-    expect(requestJsonMock).toHaveBeenLastCalledWith(expect.stringContaining('page=2'));
+    expect(listCalls().at(-1)).toContain('page=2');
     expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
@@ -129,7 +148,7 @@ describe('EmployeeListPage', () => {
   });
 
   it('shows "No employees yet" when there are no employees', async () => {
-    requestJsonMock.mockResolvedValue(aPage({ items: [], total: 0, totalPages: 1 }));
+    serveApi(() => aPage({ items: [], total: 0, totalPages: 1 }));
 
     renderWithProviders(<EmployeeListPage />);
 
@@ -147,17 +166,157 @@ describe('EmployeeListPage', () => {
 
   it('shows an error message with a retry button, and retrying loads the list', async () => {
     const user = userEvent.setup();
-    requestJsonMock.mockRejectedValueOnce(
-      new ApiError(500, 'INTERNAL_ERROR', 'Something went wrong'),
-    );
-    requestJsonMock.mockResolvedValueOnce(aPage());
+    let listRequests = 0;
+    serveApi(() => {
+      listRequests += 1;
+      if (listRequests === 1) throw new ApiError(500, 'INTERNAL_ERROR', 'Something went wrong');
+      return aPage();
+    });
     renderWithProviders(<EmployeeListPage />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('Asha Rao')).toBeInTheDocument();
-    await waitFor(() => expect(requestJsonMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listRequests).toBe(2));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('EmployeeListPage search and filters', () => {
+  /** Serves a result that depends on the request, so filtered and unfiltered lists differ. */
+  function serveFiltered() {
+    serveApi((path) => {
+      const params = new URL(path, 'http://localhost').searchParams;
+      const isFiltered = ['search', 'country', 'department', 'jobTitle'].some((key) =>
+        params.has(key),
+      );
+      if (params.get('search') === 'nobody') return aPage({ items: [], total: 0 });
+      if (isFiltered) {
+        return aPage({ items: [anEmployee({ id: 2, fullName: 'Filtered Person' })], total: 1 });
+      }
+      return aPage({
+        items: [anEmployee({ id: 1, fullName: 'Asha Rao' })],
+        total: 26,
+        totalPages: 2,
+      });
+    });
+  }
+
+  it('requests the typed search text after a pause, not on every keystroke', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+
+    await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'ana');
+
+    expect(await screen.findByText('Filtered Person')).toBeInTheDocument();
+    const searchRequests = listCalls().filter((path) => path.includes('search='));
+    expect(searchRequests).toEqual(['/api/employees?search=ana']);
+  });
+
+  it('requests the chosen country, department and job title', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+
+    await user.click(screen.getByRole('combobox', { name: 'Country' }));
+    await user.click(screen.getByRole('option', { name: 'India' }));
+    await user.click(screen.getByRole('combobox', { name: 'Department' }));
+    await user.click(screen.getByRole('option', { name: 'Finance' }));
+    await user.click(await screen.findByRole('combobox', { name: 'Job title' }));
+    await user.click(await screen.findByRole('option', { name: 'Analyst' }));
+
+    await waitFor(() => {
+      const lastCall = new URL(listCalls().at(-1) ?? '', 'http://localhost').searchParams;
+      expect(Object.fromEntries(lastCall)).toEqual({
+        country: 'IN',
+        department: 'Finance',
+        jobTitle: 'Analyst',
+      });
+    });
+  });
+
+  it('asks for the job title options of the employees in view', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+
+    await user.click(screen.getByRole('combobox', { name: 'Country' }));
+    await user.click(screen.getByRole('option', { name: 'India' }));
+
+    await waitFor(() =>
+      expect(requestJsonMock).toHaveBeenCalledWith('/api/employees/job-titles?country=IN'),
+    );
+  });
+
+  it('returns to page 1 when a filter changes', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(listCalls().at(-1)).toContain('page=2'));
+
+    await user.click(screen.getByRole('combobox', { name: 'Country' }));
+    await user.click(screen.getByRole('option', { name: 'India' }));
+
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?country=IN'));
+  });
+
+  it('returns to page 1 when the search text changes', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(listCalls().at(-1)).toContain('page=2'));
+
+    await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'ana');
+
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?search=ana'));
+  });
+
+  it('shows "No matching employees" when filters match nothing, instead of "No employees yet"', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+
+    await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'nobody');
+
+    expect(await screen.findByText('No matching employees')).toBeInTheDocument();
+    expect(screen.queryByText('No employees yet')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search name' })).toBeInTheDocument();
+  });
+
+  it('clears the search and every filter and shows the full list again', async () => {
+    const user = userEvent.setup();
+    serveFiltered();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+    await user.type(screen.getByRole('textbox', { name: 'Search name' }), 'nobody');
+    await screen.findByText('No matching employees');
+    await user.click(screen.getByRole('combobox', { name: 'Country' }));
+    await user.click(screen.getByRole('option', { name: 'India' }));
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(await screen.findByText('Asha Rao')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search name' })).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Country' })).toHaveTextContent('All countries');
+    expect(listCalls().at(-1)).toBe('/api/employees');
+  });
+
+  it('keeps the filters visible when the list fails to load', async () => {
+    serveApi(() => {
+      throw new ApiError(500, 'INTERNAL_ERROR', 'Something went wrong');
+    });
+
+    renderWithProviders(<EmployeeListPage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(await screen.findByRole('textbox', { name: 'Search name' })).toBeInTheDocument();
   });
 });
