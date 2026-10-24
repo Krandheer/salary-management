@@ -1,7 +1,8 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CountryInsight, CountryInsights } from '@acme/contracts';
+import type { CountryInsight, CountryInsights, CountryJobTitleInsights } from '@acme/contracts';
+import { aReference } from '../../../test/fixtures';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
 import { InsightsPage } from './InsightsPage';
@@ -124,5 +125,127 @@ describe('InsightsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByRole('row', { name: /India/ })).toBeInTheDocument();
+  });
+
+  describe('job-title insights', () => {
+    function aJobTitleInsights(
+      overrides: Partial<CountryJobTitleInsights> = {},
+    ): CountryJobTitleInsights {
+      return {
+        country: 'IN',
+        countryName: 'India',
+        currency: 'INR',
+        jobTitles: [
+          {
+            jobTitle: 'Analyst',
+            headcount: 3,
+            min: 1_000_000,
+            max: 3_000_000,
+            mean: 2_000_000,
+            median: 2_000_000,
+          },
+          {
+            jobTitle: 'Designer',
+            headcount: 1,
+            min: 900_000,
+            max: 900_000,
+            mean: 900_000,
+            median: 900_000,
+          },
+        ],
+        ...overrides,
+      };
+    }
+
+    function serveApi(jobTitlesByCountry: Record<string, CountryJobTitleInsights>) {
+      requestJsonMock.mockImplementation((url: string) => {
+        if (url === '/api/insights/countries') {
+          return Promise.resolve({
+            countries: [
+              aCountryInsight(),
+              aCountryInsight({ country: 'US', countryName: 'United States', currency: 'USD' }),
+            ],
+          });
+        }
+        if (url === '/api/reference') return Promise.resolve(aReference());
+        const match = /^\/api\/insights\/countries\/(\w+)\/job-titles$/.exec(url);
+        if (match?.[1] && jobTitlesByCountry[match[1]]) {
+          return Promise.resolve(jobTitlesByCountry[match[1]]);
+        }
+        return Promise.reject(new Error(`Unexpected ${url}`));
+      });
+    }
+
+    it('shows the job titles of the country picked from its row', async () => {
+      serveApi({ IN: aJobTitleInsights() });
+      const user = userEvent.setup();
+      renderWithProviders(<InsightsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'View job titles for India' }));
+
+      const analystRow = await screen.findByRole('row', { name: /Analyst/ });
+      expect(within(analystRow).getByText('3')).toBeInTheDocument();
+      expect(within(analystRow).getByText('INR 1,000,000')).toBeInTheDocument();
+      expect(within(analystRow).getByText('INR 3,000,000')).toBeInTheDocument();
+      expect(screen.getByRole('row', { name: /Designer/ })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Country' })).toHaveTextContent('India');
+      expect(requestJsonMock).toHaveBeenCalledWith('/api/insights/countries/IN/job-titles');
+    });
+
+    it('defaults to the first country A to Z when the tab is opened directly', async () => {
+      serveApi({
+        AU: aJobTitleInsights({ country: 'AU', countryName: 'Australia', currency: 'AUD' }),
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<InsightsPage />);
+
+      await user.click(screen.getByRole('tab', { name: 'By job title' }));
+
+      expect(await screen.findByRole('row', { name: /Analyst/ })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Country' })).toHaveTextContent('Australia');
+    });
+
+    it('switches to another country chosen from the selector', async () => {
+      serveApi({
+        IN: aJobTitleInsights(),
+        US: aJobTitleInsights({
+          country: 'US',
+          countryName: 'United States',
+          currency: 'USD',
+          jobTitles: [
+            {
+              jobTitle: 'Accountant',
+              headcount: 2,
+              min: 50_000,
+              max: 70_000,
+              mean: 60_000,
+              median: 60_000,
+            },
+          ],
+        }),
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<InsightsPage />);
+      await user.click(await screen.findByRole('button', { name: 'View job titles for India' }));
+      await screen.findByRole('row', { name: /Analyst/ });
+
+      await user.click(screen.getByRole('combobox', { name: 'Country' }));
+      await user.click(await screen.findByRole('option', { name: 'United States' }));
+
+      const accountantRow = await screen.findByRole('row', { name: /Accountant/ });
+      expect(within(accountantRow).getByText('USD 70,000')).toBeInTheDocument();
+      expect(screen.queryByRole('row', { name: /Analyst/ })).not.toBeInTheDocument();
+    });
+
+    it('shows "No employees in this country" when the country has no active employees', async () => {
+      serveApi({ IN: aJobTitleInsights({ jobTitles: [] }) });
+      const user = userEvent.setup();
+      renderWithProviders(<InsightsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'View job titles for India' }));
+
+      expect(await screen.findByText('No employees in this country')).toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    });
   });
 });

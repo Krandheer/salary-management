@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import type { CountryInsights } from '@acme/contracts';
+import type { CountryInsights, CountryJobTitleInsights } from '@acme/contracts';
 import { insertEmployee } from '../../test/builders.ts';
 import { createTestApp } from '../../test/testApp.ts';
 
@@ -190,5 +190,187 @@ describe('GET /api/insights/countries', () => {
       const [us] = (await getCountryInsights(app)).countries;
       expect(us).toMatchObject({ headcount: 1, max: 100_000 });
     });
+  });
+});
+
+describe('GET /api/insights/countries/:code/job-titles', () => {
+  async function getJobTitles(app: TestApp['app'], code: string) {
+    return request(app).get(`/api/insights/countries/${code}/job-titles`);
+  }
+
+  function hire(db: TestApp['db'], jobTitle: string, amount: number, extra = {}) {
+    insertEmployee(db, {
+      countryCode: 'US',
+      jobTitle,
+      salaryHistory: [{ amount, effectiveDate: '2020-01-15' }],
+      ...extra,
+    });
+  }
+
+  it('computes headcount, min, max, mean and median per job title in the country currency', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Analyst', 60_000);
+    hire(db, 'Analyst', 80_000);
+    hire(db, 'Analyst', 130_000);
+    hire(db, 'Designer', 70_000);
+
+    const response = await getJobTitles(app, 'US');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      country: 'US',
+      countryName: 'United States',
+      currency: 'USD',
+      jobTitles: [
+        {
+          jobTitle: 'Analyst',
+          headcount: 3,
+          min: 60_000,
+          max: 130_000,
+          mean: 90_000,
+          median: 80_000,
+        },
+        {
+          jobTitle: 'Designer',
+          headcount: 1,
+          min: 70_000,
+          max: 70_000,
+          mean: 70_000,
+          median: 70_000,
+        },
+      ],
+    } satisfies CountryJobTitleInsights);
+  });
+
+  it('counts titles differing only in case or surrounding spaces as one, labelled by the majority spelling', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Software Engineer', 100_000);
+    hire(db, ' software engineer', 110_000);
+    hire(db, 'SOFTWARE ENGINEER', 120_000);
+    hire(db, 'Software Engineer ', 130_000);
+
+    const { jobTitles } = (await getJobTitles(app, 'US')).body as CountryJobTitleInsights;
+
+    expect(jobTitles).toHaveLength(1);
+    expect(jobTitles[0]).toMatchObject({ jobTitle: 'Software Engineer', headcount: 4 });
+  });
+
+  it('labels a tied title with the spelling that comes first A to Z', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'data analyst', 1);
+    hire(db, 'Data Analyst', 1);
+
+    const { jobTitles } = (await getJobTitles(app, 'US')).body as CountryJobTitleInsights;
+
+    expect(jobTitles.map((t) => t.jobTitle)).toEqual(['data analyst']);
+  });
+
+  it('shows a single employee salary as min, max, mean and median', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Architect', 175_001);
+
+    const { jobTitles } = (await getJobTitles(app, 'US')).body as CountryJobTitleInsights;
+
+    expect(jobTitles).toEqual([
+      {
+        jobTitle: 'Architect',
+        headcount: 1,
+        min: 175_001,
+        max: 175_001,
+        mean: 175_001,
+        median: 175_001,
+      },
+    ]);
+  });
+
+  it('rounds a half-way mean and median up like the country figures', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Analyst', 1);
+    hire(db, 'Analyst', 2);
+
+    const { jobTitles } = (await getJobTitles(app, 'US')).body as CountryJobTitleInsights;
+
+    expect(jobTitles[0]).toMatchObject({ mean: 2, median: 2 });
+  });
+
+  it('orders job titles A to Z', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Zoologist', 1);
+    hire(db, 'analyst', 1);
+    hire(db, 'Manager', 1);
+
+    const { jobTitles } = (await getJobTitles(app, 'US')).body as CountryJobTitleInsights;
+
+    expect(jobTitles.map((t) => t.jobTitle)).toEqual(['analyst', 'Manager', 'Zoologist']);
+  });
+
+  it('only includes employees of the requested country, using their current salary', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Analyst', 100_000);
+    insertEmployee(db, {
+      countryCode: 'IN',
+      jobTitle: 'Analyst',
+      salaryHistory: [
+        { amount: 1_000_000, effectiveDate: '2019-01-01' },
+        { amount: 2_000_000, effectiveDate: '2023-01-01' },
+      ],
+    });
+
+    const { currency, jobTitles } = (await getJobTitles(app, 'IN')).body as CountryJobTitleInsights;
+
+    expect(currency).toBe('INR');
+    expect(jobTitles).toEqual([
+      {
+        jobTitle: 'Analyst',
+        headcount: 1,
+        min: 2_000_000,
+        max: 2_000_000,
+        mean: 2_000_000,
+        median: 2_000_000,
+      },
+    ]);
+  });
+
+  it('excludes inactive employees', async () => {
+    const { app, db } = createTestApp();
+    hire(db, 'Analyst', 100_000);
+    hire(db, 'Analyst', 900_000, { status: 'inactive', exitDate: '2024-01-01' });
+    hire(db, 'Retired Role', 50_000, { status: 'inactive', exitDate: '2024-01-01' });
+
+    const { jobTitles } = (await getJobTitles(app, 'US')).body as CountryJobTitleInsights;
+
+    expect(jobTitles).toEqual([
+      {
+        jobTitle: 'Analyst',
+        headcount: 1,
+        min: 100_000,
+        max: 100_000,
+        mean: 100_000,
+        median: 100_000,
+      },
+    ]);
+  });
+
+  it('returns an empty list for a known country with no active employees', async () => {
+    const { app } = createTestApp();
+
+    const response = await getJobTitles(app, 'GB');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      country: 'GB',
+      countryName: 'United Kingdom',
+      currency: 'GBP',
+      jobTitles: [],
+    });
+  });
+
+  it('answers 404 for an unknown country code', async () => {
+    const { app } = createTestApp();
+
+    const response = await getJobTitles(app, 'ZZ');
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('NOT_FOUND');
   });
 });
