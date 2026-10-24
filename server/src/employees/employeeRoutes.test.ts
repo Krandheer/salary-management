@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PAGE_SIZE,
   type ApiErrorBody,
+  type EmailCheckResult,
   type EmployeeDetail,
   type EmployeeListPage,
   type JobTitleOptions,
@@ -929,5 +930,363 @@ describe('malformed JSON request body', () => {
     expect(response.body).toEqual({
       error: { code: 'VALIDATION_FAILED', message: 'Request body is not valid JSON' },
     });
+  });
+});
+
+describe('DELETE /api/employees/:id', () => {
+  const remove = (app: ReturnType<typeof createTestApp>['app'], id: number, query = '') =>
+    request(app).delete(`/api/employees/${id}${query}`);
+  const getDetail = async (app: ReturnType<typeof createTestApp>['app'], id: number) =>
+    (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+
+  it('makes the employee inactive with the given exit date and returns the detail', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { fullName: 'Leaver', hireDate: '2020-01-15' });
+
+    const response = await remove(app, id, '?exitDate=2026-09-30');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id, status: 'inactive', exitDate: '2026-09-30' });
+    expect(await getDetail(app, id)).toMatchObject({ status: 'inactive', exitDate: '2026-09-30' });
+  });
+
+  it('defaults the exit date to today when none is given', async () => {
+    const { app, db } = createTestApp({ today: '2026-10-24' });
+    const id = insertEmployee(db);
+
+    const response = await remove(app, id);
+
+    expect((response.body as EmployeeDetail).exitDate).toBe('2026-10-24');
+  });
+
+  it('removes the employee from the default list and shows them in the inactive list', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, { fullName: 'Stays' });
+    const id = insertEmployee(db, { fullName: 'Leaves' });
+
+    await remove(app, id, '?exitDate=2026-01-31');
+
+    const active = (await getPage(app)).body;
+    const inactive = (await getPage(app, '?status=inactive')).body;
+    expect(active.items.map((item) => item.fullName)).toEqual(['Stays']);
+    expect(inactive.items.map((item) => item.fullName)).toEqual(['Leaves']);
+    expect(inactive.items[0]).toMatchObject({ status: 'inactive', exitDate: '2026-01-31' });
+  });
+
+  it('keeps the salary history and details of the deleted employee', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      hireDate: '2020-01-15',
+      salaryHistory: [
+        { amount: 80_000, effectiveDate: '2020-01-15' },
+        { amount: 90_000, effectiveDate: '2023-01-01' },
+      ],
+    });
+
+    await remove(app, id, '?exitDate=2026-01-31');
+
+    const detail = await getDetail(app, id);
+    expect(detail.salaryHistory.map((entry) => entry.amount)).toEqual([90_000, 80_000]);
+    expect(detail.currentSalary).toBe(90_000);
+  });
+
+  it('answers 409 EMPLOYEE_INACTIVE when deleting an inactive employee again', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { status: 'inactive', exitDate: '2025-01-01' });
+
+    const response = await remove(app, id, '?exitDate=2025-06-01');
+
+    expect(response.status).toBe(409);
+    expect((response.body as ApiErrorBody).error.code).toBe('EMPLOYEE_INACTIVE');
+    expect((await getDetail(app, id)).exitDate).toBe('2025-01-01');
+  });
+
+  it('answers 404 for an unknown employee', async () => {
+    const { app } = createTestApp();
+
+    const response = await remove(app, 999);
+
+    expect(response.status).toBe(404);
+    expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
+  });
+
+  it('answers 400 with an exitDate error for a future date and leaves the employee active', async () => {
+    const { app, db } = createTestApp({ today: '2026-10-24' });
+    const id = insertEmployee(db);
+
+    const response = await remove(app, id, '?exitDate=2026-10-25');
+
+    expect(response.status).toBe(400);
+    expect((response.body as ApiErrorBody).error.fieldErrors?.exitDate).toMatch(/future/);
+    expect((await getDetail(app, id)).status).toBe('active');
+  });
+
+  it('answers 400 with an exitDate error for a date before the hire date', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { hireDate: '2024-03-01' });
+
+    const response = await remove(app, id, '?exitDate=2024-02-29');
+
+    expect(response.status).toBe(400);
+    expect((response.body as ApiErrorBody).error.fieldErrors?.exitDate).toMatch(/hire date/);
+  });
+
+  it('answers 400 for an exit date that is not a calendar date', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db);
+
+    const response = await remove(app, id, '?exitDate=2026-02-30');
+
+    expect(response.status).toBe(400);
+    expect((response.body as ApiErrorBody).error.fieldErrors?.exitDate).toBeDefined();
+  });
+
+  it('applies search and filters to the inactive list', async () => {
+    const { app, db } = createTestApp();
+    const indian = insertEmployee(db, { fullName: 'Asha Rao', countryCode: 'IN' });
+    const american = insertEmployee(db, { fullName: 'Ashley Cole', countryCode: 'US' });
+    await remove(app, indian, '?exitDate=2026-01-31');
+    await remove(app, american, '?exitDate=2026-01-31');
+
+    const { body } = await getPage(app, '?status=inactive&search=ash&country=IN');
+
+    expect(body.items.map((item) => item.fullName)).toEqual(['Asha Rao']);
+  });
+});
+
+describe('inactive employees are read-only', () => {
+  it('rejects a salary change on an inactive employee with 409 and records nothing', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { status: 'inactive', exitDate: '2025-01-01' });
+
+    const response = await request(app)
+      .patch(`/api/employees/${id}`)
+      .send({ salaryChange: { amount: 99_000 } });
+
+    expect(response.status).toBe(409);
+    expect((response.body as ApiErrorBody).error.code).toBe('EMPLOYEE_INACTIVE');
+    const detail = (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+    expect(detail.salaryHistory).toHaveLength(1);
+  });
+
+  it('offers no way back to active', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { status: 'inactive', exitDate: '2025-01-01' });
+
+    const responses = await Promise.all([
+      request(app).post(`/api/employees/${id}/restoration`),
+      request(app).post(`/api/employees/${id}/restore`),
+      request(app).patch(`/api/employees/${id}`).send({ status: 'active' }),
+    ]);
+
+    expect(responses.map((response) => response.status === 404 || response.status === 409)).toEqual(
+      [true, true, true],
+    );
+    const detail = (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+    expect(detail.status).toBe('inactive');
+  });
+});
+
+describe("rehire: POST /api/employees with an inactive employee's email", () => {
+  const former = {
+    fullName: 'Asha Rao',
+    email: 'asha.rao@acme.example',
+    status: 'inactive' as const,
+    exitDate: '2025-06-30',
+    hireDate: '2020-01-15',
+    salaryHistory: [{ amount: 70_000, effectiveDate: '2020-01-15' }],
+  };
+  const rehireBody = (overrides: object = {}) => ({
+    fullName: 'Asha Rao',
+    email: 'Asha.Rao@acme.example',
+    jobTitle: 'Staff Engineer',
+    department: 'Engineering',
+    country: 'IN',
+    annualSalary: 2_500_000,
+    employmentType: 'Full-time',
+    hireDate: '2026-02-01',
+    ...overrides,
+  });
+
+  it('creates a new employee with a new id and a fresh salary history from the new hire date', async () => {
+    const { app, db } = createTestApp();
+    const formerId = insertEmployee(db, former);
+
+    const response = await request(app).post('/api/employees').send(rehireBody());
+
+    expect(response.status).toBe(201);
+    const created = response.body as EmployeeDetail;
+    expect(created.id).not.toBe(formerId);
+    expect(created.status).toBe('active');
+    expect(created.salaryHistory).toEqual([
+      expect.objectContaining({ amount: 2_500_000, effectiveDate: '2026-02-01' }),
+    ]);
+  });
+
+  it('links the two records to each other by email', async () => {
+    const { app, db } = createTestApp();
+    const formerId = insertEmployee(db, former);
+
+    const created = (await request(app).post('/api/employees').send(rehireBody()))
+      .body as EmployeeDetail;
+
+    const formerDetail = (await request(app).get(`/api/employees/${formerId}`))
+      .body as EmployeeDetail;
+    expect(created.linkedEmployments).toEqual([
+      { id: formerId, hireDate: '2020-01-15', exitDate: '2025-06-30', status: 'inactive' },
+    ]);
+    expect(formerDetail.linkedEmployments).toEqual([
+      { id: created.id, hireDate: '2026-02-01', exitDate: null, status: 'active' },
+    ]);
+  });
+
+  it('lists linked employments newest hire first', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, former);
+    const secondId = insertEmployee(db, {
+      ...former,
+      hireDate: '2025-08-01',
+      exitDate: '2025-12-31',
+    });
+
+    const created = (await request(app).post('/api/employees').send(rehireBody()))
+      .body as EmployeeDetail;
+
+    expect(created.linkedEmployments.map((link) => link.hireDate)).toEqual([
+      '2025-08-01',
+      '2020-01-15',
+    ]);
+    expect(created.linkedEmployments[0]?.id).toBe(secondId);
+  });
+
+  it('leaves the inactive record and its history unchanged', async () => {
+    const { app, db } = createTestApp();
+    const formerId = insertEmployee(db, former);
+    const before = (await request(app).get(`/api/employees/${formerId}`)).body as EmployeeDetail;
+
+    await request(app).post('/api/employees').send(rehireBody());
+
+    const after = (await request(app).get(`/api/employees/${formerId}`)).body as EmployeeDetail;
+    expect({ ...after, linkedEmployments: [] }).toEqual({ ...before, linkedEmployments: [] });
+  });
+
+  it('rejects a hire date on the exit date of the most recent inactive record', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, former);
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send(rehireBody({ hireDate: '2025-06-30' }));
+
+    expect(response.status).toBe(400);
+    expect((response.body as ApiErrorBody).error.fieldErrors?.hireDate).toMatch(/after/);
+    expect((await getPage(app)).body.total).toBe(0);
+  });
+
+  it('accepts a hire date the day after the exit date', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, former);
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send(rehireBody({ hireDate: '2025-07-01' }));
+
+    expect(response.status).toBe(201);
+  });
+
+  it('judges the hire date against the latest exit date when several inactive records share the email', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, former);
+    insertEmployee(db, { ...former, hireDate: '2025-08-01', exitDate: '2025-12-31' });
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send(rehireBody({ hireDate: '2025-09-01' }));
+
+    expect(response.status).toBe(400);
+  });
+
+  it('still answers 409 EMAIL_TAKEN when an active employee has the email', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, former);
+    insertEmployee(db, { email: 'asha.rao@acme.example' });
+
+    const response = await request(app).post('/api/employees').send(rehireBody());
+
+    expect(response.status).toBe(409);
+    expect((response.body as ApiErrorBody).error.code).toBe('EMAIL_TAKEN');
+  });
+
+  it('lets a returning person be added again after the rehired record is also deleted', async () => {
+    const { app, db } = createTestApp();
+    insertEmployee(db, former);
+    const rehired = (await request(app).post('/api/employees').send(rehireBody()))
+      .body as EmployeeDetail;
+    await request(app).delete(`/api/employees/${rehired.id}?exitDate=2026-09-01`);
+
+    const response = await request(app)
+      .post('/api/employees')
+      .send(rehireBody({ hireDate: '2026-09-02' }));
+
+    expect(response.status).toBe(201);
+    expect((response.body as EmployeeDetail).linkedEmployments).toHaveLength(2);
+  });
+});
+
+describe('GET /api/employees/email-check', () => {
+  const check = async (app: ReturnType<typeof createTestApp>['app'], email: string) =>
+    request(app).get('/api/employees/email-check').query({ email });
+
+  it('reports no match for an unused email', async () => {
+    const { app } = createTestApp();
+
+    const response = await check(app, 'nobody@acme.example');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ activeEmployeeId: null, inactiveEmployees: [] });
+  });
+
+  it('reports the active employee id, ignoring case and surrounding spaces', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { email: 'asha.rao@acme.example' });
+
+    const { body } = await check(app, '  Asha.Rao@Acme.example ');
+
+    expect((body as EmailCheckResult).activeEmployeeId).toBe(id);
+  });
+
+  it('lists the inactive employees with the email, most recent exit first', async () => {
+    const { app, db } = createTestApp();
+    const older = insertEmployee(db, {
+      email: 'asha.rao@acme.example',
+      hireDate: '2018-01-01',
+      status: 'inactive',
+      exitDate: '2019-01-01',
+    });
+    const newer = insertEmployee(db, {
+      email: 'asha.rao@acme.example',
+      hireDate: '2020-01-01',
+      status: 'inactive',
+      exitDate: '2022-01-01',
+    });
+
+    const { body } = await check(app, 'asha.rao@acme.example');
+
+    expect(body).toEqual({
+      activeEmployeeId: null,
+      inactiveEmployees: [
+        { id: newer, hireDate: '2020-01-01', exitDate: '2022-01-01', status: 'inactive' },
+        { id: older, hireDate: '2018-01-01', exitDate: '2019-01-01', status: 'inactive' },
+      ],
+    });
+  });
+
+  it('answers an empty result when no email is given, instead of treating "email-check" as an id', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app).get('/api/employees/email-check');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ activeEmployeeId: null, inactiveEmployees: [] });
   });
 });

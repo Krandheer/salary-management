@@ -1,7 +1,9 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDetail } from '@acme/contracts';
+import { aReference } from '../../../test/fixtures';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
 import { EmployeeDetailPage } from './EmployeeDetailPage';
@@ -46,6 +48,14 @@ function renderDetail(id: string) {
     </Routes>,
     { route: `/employees/${id}` },
   );
+}
+
+/** Serves the reference data and the employee detail from `serveDetail`. */
+function serveApi(serveDetail: () => EmployeeDetail) {
+  requestJsonMock.mockImplementation(async (path: string) => {
+    if (path === '/api/reference') return aReference();
+    return serveDetail();
+  });
 }
 
 beforeEach(() => {
@@ -115,5 +125,89 @@ describe('EmployeeDetailPage', () => {
     renderDetail('999');
 
     expect(await screen.findByText('Employee not found')).toBeInTheDocument();
+  });
+
+  it('offers Edit and Delete for an active employee', async () => {
+    serveApi(() => detail);
+
+    renderDetail('7');
+
+    expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
+  it('asks for confirmation before deleting and shows the employee as inactive afterwards', async () => {
+    let current = detail;
+    requestJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/reference') return aReference();
+      if (init?.method === 'DELETE') {
+        current = { ...detail, status: 'inactive', exitDate: '2026-10-24' };
+        return current;
+      }
+      return current;
+    });
+    const user = userEvent.setup();
+    renderDetail('7');
+
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(requestJsonMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByText('Inactive')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('shows an inactive employee with the exit date, details and history, and no Edit or Delete', async () => {
+    serveApi(() => ({ ...detail, status: 'inactive', exitDate: '2025-06-30' }));
+
+    renderDetail('7');
+
+    expect(await screen.findByText('Inactive')).toBeInTheDocument();
+    expect(screen.getByText('Exit date').nextElementSibling).toHaveTextContent('2025-06-30');
+    expect(screen.getByText('asha.rao@acme.example')).toBeInTheDocument();
+    expect(screen.getByText('Starting salary')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
+  });
+
+  it('lists linked employment records with id, hire date, exit date, status and a link to open each', async () => {
+    serveApi(() => ({
+      ...detail,
+      linkedEmployments: [
+        { id: 3, hireDate: '2020-01-15', exitDate: '2023-12-31', status: 'inactive' },
+        { id: 2, hireDate: '2015-05-01', exitDate: '2019-05-01', status: 'inactive' },
+      ],
+    }));
+
+    renderDetail('7');
+
+    await screen.findByRole('heading', { level: 1, name: 'Asha Rao' });
+    expect(screen.getByRole('heading', { name: 'Linked employment records' })).toBeInTheDocument();
+    const row = screen.getByRole('link', { name: 'Open employee 3' }).closest('tr');
+    expect(row).toHaveTextContent('3');
+    expect(row).toHaveTextContent('2020-01-15');
+    expect(row).toHaveTextContent('2023-12-31');
+    expect(row).toHaveTextContent('Inactive');
+    expect(screen.getByRole('link', { name: 'Open employee 3' })).toHaveAttribute(
+      'href',
+      '/employees/3',
+    );
+    expect(screen.getByRole('link', { name: 'Open employee 2' })).toHaveAttribute(
+      'href',
+      '/employees/2',
+    );
+  });
+
+  it('omits the linked employment section when there are none', async () => {
+    serveApi(() => detail);
+
+    renderDetail('7');
+
+    await screen.findByRole('heading', { level: 1, name: 'Asha Rao' });
+    expect(screen.queryByText('Linked employment records')).not.toBeInTheDocument();
   });
 });

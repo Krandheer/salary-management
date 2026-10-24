@@ -10,7 +10,9 @@ import {
   validateEmploymentType,
   validateFullName,
   validateHireDate,
+  validateExitDate,
   validateJobTitle,
+  validateRehireHireDate,
   validateSalaryChange,
 } from './employeeValidation.ts';
 import type { EmployeeFields } from './employeeValidation.ts';
@@ -546,5 +548,52 @@ describe('validateEmployeeUpdate with a dated salary change', () => {
     );
 
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('validateExitDate', () => {
+  const context = { today: TODAY, hireDate: '2024-03-01' };
+
+  it('accepts a date between the hire date and today, inclusive of both ends', () => {
+    expect(validateExitDate('2025-06-30', context)).toBeNull();
+    expect(validateExitDate('2024-03-01', context)).toBeNull();
+    expect(validateExitDate(TODAY, context)).toBeNull();
+  });
+
+  it('rejects a date in the future', () => {
+    expect(validateExitDate('2026-10-25', context)).toBe('Exit date cannot be in the future');
+  });
+
+  it('rejects a date before the hire date', () => {
+    expect(validateExitDate('2024-02-29', context)).toBe(
+      'Exit date cannot be before the hire date',
+    );
+  });
+
+  it.each([['2025-02-30'], ['soon'], [20250101], [['2025-01-01', '2025-01-02']], [null]])(
+    'rejects %j as not a valid date',
+    (value) => {
+      expect(validateExitDate(value, context)).toBe('Exit date must be a valid date');
+    },
+  );
+});
+
+describe('validateRehireHireDate', () => {
+  it('accepts any hire date when there is no earlier inactive record', () => {
+    expect(validateRehireHireDate('2024-03-01', null)).toBeNull();
+  });
+
+  it('rejects a hire date equal to the latest exit date', () => {
+    expect(validateRehireHireDate('2025-06-30', '2025-06-30')).toBe(
+      'Hire date must be after the previous exit date (2025-06-30)',
+    );
+  });
+
+  it('rejects a hire date before the latest exit date', () => {
+    expect(validateRehireHireDate('2025-06-29', '2025-06-30')).not.toBeNull();
+  });
+
+  it('accepts a hire date the day after the latest exit date', () => {
+    expect(validateRehireHireDate('2025-07-01', '2025-06-30')).toBeNull();
   });
 });

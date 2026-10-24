@@ -331,4 +331,60 @@ describe('EmployeeListPage search and filters', () => {
       '/employees/new',
     );
   });
+
+  it('lists only inactive employees with an exit date column when "Show inactive employees" is on', async () => {
+    serveApi((path) =>
+      path.includes('status=inactive')
+        ? aPage({
+            items: [
+              anEmployee({
+                id: 9,
+                fullName: 'Former Person',
+                status: 'inactive',
+                exitDate: '2025-06-30',
+              }),
+            ],
+          })
+        : aPage(),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+    expect(screen.queryByRole('columnheader', { name: 'Exit date' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('switch', { name: 'Show inactive employees' }));
+
+    expect(await screen.findByText('Former Person')).toBeInTheDocument();
+    expect(screen.queryByText('Asha Rao')).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Exit date' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '2025-06-30' })).toBeInTheDocument();
+    expect(listCalls().at(-1)).toBe('/api/employees?status=inactive&page=1');
+  });
+
+  it('goes back to page 1 when "Show inactive employees" is switched on', async () => {
+    serveTwoPages();
+    const user = userEvent.setup();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    await screen.findByText('Zed Young');
+
+    await user.click(screen.getByRole('switch', { name: 'Show inactive employees' }));
+
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?status=inactive&page=1'));
+  });
+
+  it('keeps search and filters applied to the inactive list', async () => {
+    serveApi(() => aPage());
+    const user = userEvent.setup();
+    renderWithProviders(<EmployeeListPage />);
+    await user.type(await screen.findByLabelText('Search name'), 'ash');
+    await waitFor(() => expect(listCalls().at(-1)).toContain('search=ash'));
+
+    await user.click(screen.getByRole('switch', { name: 'Show inactive employees' }));
+
+    await waitFor(() =>
+      expect(listCalls().at(-1)).toBe('/api/employees?search=ash&status=inactive&page=1'),
+    );
+  });
 });
