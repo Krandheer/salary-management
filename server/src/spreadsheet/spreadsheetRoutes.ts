@@ -32,8 +32,8 @@ function toImportFileError(error: unknown): ImportFileError {
 }
 
 /**
- * Accepts exactly one file part named "file", held in memory and capped at 10 MB while it
- * streams in, so an oversized upload is refused before any of it is parsed.
+ * Accepts exactly one file part named "file", held in memory and capped at the import size limit
+ * while it streams in, so an oversized upload is refused before any of it is parsed.
  */
 function receiveImportFile(): RequestHandler {
   const upload = multer({

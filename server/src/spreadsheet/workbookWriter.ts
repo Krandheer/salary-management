@@ -1,7 +1,12 @@
 import ExcelJS from 'exceljs';
 import type { ExportRow } from '../employees/employeeReadModels.ts';
 import { COUNTRIES, DEPARTMENTS, EMPLOYMENT_TYPES } from '../reference/referenceData.ts';
-import { ALLOWED_VALUES_SHEET, TEMPLATE_COLUMNS, type TemplateField } from './templateColumns.ts';
+import {
+  ALLOWED_VALUES_SHEET,
+  HEADER_ROW_NUMBER,
+  TEMPLATE_COLUMNS,
+  type TemplateField,
+} from './templateColumns.ts';
 
 const EMPLOYEES_SHEET = 'Employees';
 const SALARY_FORMAT = '0';
@@ -20,9 +25,11 @@ const FIELD_OF_COLUMN: Record<TemplateField, (row: ExportRow) => string | number
 };
 
 function addEmployeesSheet(workbook: ExcelJS.Workbook, rows: readonly ExportRow[]): void {
-  const sheet = workbook.addWorksheet(EMPLOYEES_SHEET, { views: [{ state: 'frozen', ySplit: 1 }] });
+  const sheet = workbook.addWorksheet(EMPLOYEES_SHEET, {
+    views: [{ state: 'frozen', ySplit: HEADER_ROW_NUMBER }],
+  });
   sheet.columns = TEMPLATE_COLUMNS.map(({ header, key, width }) => ({ header, key, width }));
-  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(HEADER_ROW_NUMBER).font = { bold: true };
   sheet.getColumn('annualSalary').numFmt = SALARY_FORMAT;
   sheet.getColumn('hireDate').numFmt = HIRE_DATE_FORMAT;
   for (const row of rows) {
@@ -45,17 +52,13 @@ function addAllowedValuesSheet(workbook: ExcelJS.Workbook): void {
   for (const type of EMPLOYMENT_TYPES) sheet.addRow([type]);
 }
 
-async function writeWorkbook(rows: readonly ExportRow[]): Promise<Buffer> {
+export async function buildEmployeesWorkbook(rows: readonly ExportRow[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   addEmployeesSheet(workbook, rows);
   addAllowedValuesSheet(workbook);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-export function buildEmployeesWorkbook(rows: readonly ExportRow[]): Promise<Buffer> {
-  return writeWorkbook(rows);
-}
-
 export function buildTemplateWorkbook(): Promise<Buffer> {
-  return writeWorkbook([]);
+  return buildEmployeesWorkbook([]);
 }

@@ -28,6 +28,9 @@ export const TEMPLATE_COLUMNS: readonly TemplateColumn[] = [
   { header: 'Hire Date', key: 'hireDate', width: 12 },
 ];
 
+/** The row holding the column headers, in the template and in every export; data starts below it. */
+export const HEADER_ROW_NUMBER = 1;
+
 export const ALLOWED_VALUES_SHEET = 'Allowed values';
 
 const HEADER_OF = Object.fromEntries(

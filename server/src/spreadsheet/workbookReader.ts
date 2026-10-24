@@ -1,7 +1,7 @@
 import type ExcelJS from 'exceljs';
 import { ImportFileError } from '../shared/errors.ts';
 import { normalizeKey } from '../shared/text.ts';
-import { TEMPLATE_COLUMNS } from './templateColumns.ts';
+import { HEADER_ROW_NUMBER, TEMPLATE_COLUMNS } from './templateColumns.ts';
 import { openFirstWorksheet, type FirstWorksheet } from './xlsx/workbookPackage.ts';
 import { readWorksheetRows, type WorksheetRow } from './xlsx/worksheetRows.ts';
 import { checkUncompressedSize } from './zipSizeGuard.ts';
@@ -27,7 +27,6 @@ export const MAX_IMPORT_BYTES = MAX_IMPORT_MEGABYTES * 1024 * 1024;
 const MAX_UNCOMPRESSED_MEGABYTES = 24;
 export const MAX_UNCOMPRESSED_BYTES = MAX_UNCOMPRESSED_MEGABYTES * 1024 * 1024;
 
-const HEADER_ROW_NUMBER = 1;
 const NO_CELLS: ReadonlyMap<number, ExcelJS.CellValue> = new Map();
 const XLSX_FILE_NAME = /\.xlsx$/i;
 const EXPECTED_HEADER_KEYS = TEMPLATE_COLUMNS.map(({ header }) => normalizeKey(header));
