@@ -1,5 +1,6 @@
 import type JSZip from 'jszip';
 import type { CellValueContext } from './cellValues.ts';
+import { MalformedXlsxError } from './malformedXlsxError.ts';
 import { readDateStyles } from './dateStyles.ts';
 import { readSharedStrings } from './sharedStrings.ts';
 import { parseXmlEntry } from './xmlEntry.ts';
@@ -10,6 +11,12 @@ const WORKBOOK_RELATIONSHIPS_PART = 'xl/_rels/workbook.xml.rels';
 const SHARED_STRINGS_PART = 'xl/sharedStrings.xml';
 const STYLES_PART = 'xl/styles.xml';
 const WORKSHEET_PART = /xl\/worksheets\/sheet(\d+)[.]xml/;
+/**
+ * A workbook saved by Excel has a few dozen parts (sheets, styles, theme, document properties,
+ * one part per chart, image or comment set); 1,000 is far beyond any template-shaped file. Each
+ * sheet and each relationship the workbook lists points at a part, so it bounds those lists too.
+ */
+export const MAX_WORKBOOK_PARTS = 1_000;
 
 export interface FirstWorksheet {
   entry: JSZip.JSZipObject;
@@ -35,6 +42,12 @@ function partsByName(archive: JSZip): Map<string, JSZip.JSZipObject> {
   return parts;
 }
 
+function rejectIfPartsListFull(listed: number, what: string): void {
+  if (listed === MAX_WORKBOOK_PARTS) {
+    throw new MalformedXlsxError(`More than ${MAX_WORKBOOK_PARTS} ${what}`);
+  }
+}
+
 async function readWorkbookPart(entry: JSZip.JSZipObject | undefined): Promise<WorkbookPart> {
   const workbook: WorkbookPart = { sheets: [], isDate1904: false };
   if (!entry) return workbook;
@@ -45,6 +58,7 @@ async function readWorkbookPart(entry: JSZip.JSZipObject | undefined): Promise<W
       if (tag.name === 'workbookPr' && openElements.length === 1) {
         workbook.isDate1904 = tag.attributes.date1904 === '1';
       } else if (tag.name === 'sheet' && parent === 'sheets' && openElements.length === 2) {
+        rejectIfPartsListFull(workbook.sheets.length, 'sheets');
         workbook.sheets.push({
           sheetId: parseInt(tag.attributes.sheetId ?? '', 10),
           relationshipId: tag.attributes['r:id'],
@@ -68,6 +82,7 @@ async function readRelationshipTargets(
     onOpen(tag) {
       const { Id: id, Target: target } = tag.attributes;
       if (tag.name === 'Relationship' && id !== undefined && target !== undefined) {
+        rejectIfPartsListFull(targets.size, 'relationships');
         targets.set(id, target);
       }
     },

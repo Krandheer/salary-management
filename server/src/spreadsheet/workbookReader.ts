@@ -3,7 +3,11 @@ import type JSZip from 'jszip';
 import { ImportFileError } from '../shared/errors.ts';
 import { normalizeKey } from '../shared/text.ts';
 import { HEADER_ROW_NUMBER, TEMPLATE_COLUMNS } from './templateColumns.ts';
-import { openFirstWorksheet, type FirstWorksheet } from './xlsx/workbookPackage.ts';
+import {
+  MAX_WORKBOOK_PARTS,
+  openFirstWorksheet,
+  type FirstWorksheet,
+} from './xlsx/workbookPackage.ts';
 import { readWorksheetRows, type WorksheetRow } from './xlsx/worksheetRows.ts';
 import { openArchiveWithinLimits } from './zipSizeGuard.ts';
 
@@ -27,12 +31,6 @@ export const MAX_IMPORT_BYTES = MAX_IMPORT_MEGABYTES * 1024 * 1024;
  */
 const MAX_UNCOMPRESSED_MEGABYTES = 24;
 export const MAX_UNCOMPRESSED_BYTES = MAX_UNCOMPRESSED_MEGABYTES * 1024 * 1024;
-/**
- * A workbook saved by Excel has a few dozen parts (sheets, styles, theme, document properties,
- * one part per chart, image or comment set); 1,000 is far beyond any template-shaped file, and
- * each entry costs memory when the zip's directory is read.
- */
-const MAX_ARCHIVE_ENTRIES = 1_000;
 
 const NO_CELLS: ReadonlyMap<number, ExcelJS.CellValue> = new Map();
 const XLSX_FILE_NAME = /\.xlsx$/i;
@@ -86,7 +84,7 @@ function unreadableWorkbookError(): ImportFileError {
 /** Checked before any part is parsed: it bounds the zip directory, the unzipping and the text held. */
 async function openArchive(content: Buffer): Promise<JSZip> {
   const opening = await openArchiveWithinLimits(content, {
-    maxEntries: MAX_ARCHIVE_ENTRIES,
+    maxEntries: MAX_WORKBOOK_PARTS,
     maxUncompressedBytes: MAX_UNCOMPRESSED_BYTES,
   });
   switch (opening.outcome) {
@@ -100,7 +98,7 @@ async function openArchive(content: Buffer): Promise<JSZip> {
       );
     case 'too-many-entries':
       throw invalidFileError(
-        `The file has too many parts to be an Excel workbook (over ${MAX_ARCHIVE_ENTRIES.toLocaleString('en-US')})`,
+        `The file has too many parts to be an Excel workbook (over ${MAX_WORKBOOK_PARTS.toLocaleString('en-US')})`,
       );
   }
 }

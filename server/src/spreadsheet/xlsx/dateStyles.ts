@@ -17,6 +17,19 @@ export function isDateFormat(formatCode: string): boolean {
   return /[ymdhMsb]+/.test(withoutLiterals);
 }
 
+/**
+ * Excel allows at most 65,490 cell formats in a workbook, and a few hundred number formats, so
+ * either list growing past it is no Excel file; without a cap a styles part of millions of tiny
+ * `<xf/>` records would be kept whole.
+ */
+const MAX_STYLE_RECORDS = 65_490;
+
+function rejectIfStyleListFull(listed: number, what: string): void {
+  if (listed === MAX_STYLE_RECORDS) {
+    throw new MalformedXlsxError(`More than ${MAX_STYLE_RECORDS} ${what}`);
+  }
+}
+
 function parseNumber(value: string | undefined): number {
   return parseInt(value ?? '', 10);
 }
@@ -40,9 +53,11 @@ async function readStyleSheetFormats(entry: JSZip.JSZipObject): Promise<StyleShe
     onOpen(tag) {
       const [, section] = openElements;
       if (openElements.length === 2 && section === 'numFmts' && tag.name === 'numFmt') {
+        rejectIfStyleListFull(formats.customFormats.size, 'number formats');
         const id = parseNumber(tag.attributes.numFmtId);
         formats.customFormats.set(id, unescapeFormatCode(tag.attributes.formatCode));
       } else if (openElements.length === 2 && section === 'cellXfs' && tag.name === 'xf') {
+        rejectIfStyleListFull(formats.styleFormatIds.length, 'cell formats');
         formats.styleFormatIds.push(parseNumber(tag.attributes.numFmtId));
       }
       openElements.push(tag.name);

@@ -8,7 +8,7 @@ import { MAX_IMPORT_ROWS, readImportFile } from '../src/spreadsheet/workbookRead
 import type { ExportRow } from '../src/employees/employeeReadModels.ts';
 import { buildEmployeesWorkbook } from '../src/spreadsheet/workbookWriter.ts';
 import { anImportRow, buildImportFile } from '../test/importWorkbook.ts';
-import { rewritePart } from '../test/zipArchive.ts';
+import { rewritePart, withEmptyEntries } from '../test/zipArchive.ts';
 
 const FILE_NAME = 'employees.xlsx';
 const FIRST_SHEET_PART = 'xl/worksheets/sheet1.xml';
@@ -129,5 +129,35 @@ describe('import file limits hold without building the whole workbook', () => {
 
     expect(rowCount).toBe(MAX_IMPORT_ROWS);
     expect(elapsedMs).toBeLessThan(5_000);
+  });
+
+  it('rejects 23 MB of nested tags, 25 KB zipped, in under a second instead of exhausting the heap', async () => {
+    const nestedTags = '<a>'.repeat(8_000_000);
+    const deepNesting = await rewritePart(
+      await buildImportFile([anImportRow()]),
+      FIRST_SHEET_PART,
+      (xml) => xml.replace('<sheetData>', `${nestedTags}<sheetData>`),
+    );
+    let code: string | null = null;
+
+    const elapsedMs = await millisecondsToRun(async () => {
+      code = await rejectionCodeOf(readImportFile(deepNesting, FILE_NAME));
+    });
+
+    expect(deepNesting.length).toBeLessThan(100 * 1024);
+    expect(code).toBe('INVALID_FILE');
+    expect(elapsedMs).toBeLessThan(1_000);
+  });
+
+  it('rejects a zip of 30,000 empty entries in under 250 ms, before reading its directory', async () => {
+    const manyEntries = await withEmptyEntries(await buildImportFile([anImportRow()]), 30_000);
+    let code: string | null = null;
+
+    const elapsedMs = await millisecondsToRun(async () => {
+      code = await rejectionCodeOf(readImportFile(manyEntries, FILE_NAME));
+    });
+
+    expect(code).toBe('INVALID_FILE');
+    expect(elapsedMs).toBeLessThan(250);
   });
 });
