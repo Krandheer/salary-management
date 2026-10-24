@@ -7,8 +7,8 @@ ACME's HR team manages salary data for **10,000 employees across 8 countries in 
 
 ## Success criteria
 - Find any employee and see their current salary in seconds. Pages stay responsive with all 10,000 employees loaded.
-- Add, edit and remove records in the browser, with invalid data rejected before it is saved.
-- See every salary change an employee has had. A removal never loses data.
+- Add, edit and delete records in the browser, with invalid data rejected before it is saved.
+- See every salary change an employee has had. Deleting never loses data.
 - Answer *"min / max / average salary in country X?"* and *"average salary for job title Y in country X?"* in under a minute.
 - Move data from Excel into the app and back out again without retyping.
 - One seed command loads 10,000 realistic employees.
@@ -18,7 +18,7 @@ ACME's HR team manages salary data for **10,000 employees across 8 countries in 
 2. **Search & filter:** by name, country, department and job title.
 3. **Add & edit employees:** with validation. Currency is set from the country.
 4. **Salary history:** every change is kept with an effective date and an optional reason.
-5. **Soft delete & restore:** "remove" marks an employee as *left* with an exit date. Former employees are hidden by default but kept, and can be restored.
+5. **Soft delete & rehire:** "delete" marks an employee *inactive* with an exit date. Inactive records are hidden by default, kept read-only, and never restored. A returning employee is added as a new record, linked to their earlier one, so each period of employment keeps a clean salary history.
 6. **Country insights:** headcount, min, max, mean and median salary per country, in local currency.
 7. **Job-title insights:** the same statistics per job title within a country.
 8. **Org-wide comparison:** average salary by country and by department in USD, using a fixed, dated exchange-rate table labelled as approximate.

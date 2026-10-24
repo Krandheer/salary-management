@@ -20,7 +20,7 @@ The HR Manager cannot reliably maintain salary records for 10,000 people across 
 - The HR Manager can find any employee and see their current salary in a few seconds, without opening a spreadsheet.
 - The HR Manager can add, update and remove salary records in the browser. Common mistakes (missing fields, zero or negative salary, unknown country) are caught before anything is saved.
 - The HR Manager can see every salary change an employee has had, and when it took effect.
-- Removing an employee never loses data. Former employees can be found and restored.
+- Deleting an employee never loses data. Inactive employees can still be found, and a returning employee is added as a new record linked to their earlier one.
 - The HR Manager can move existing Excel data into the tool, and get data back out to Excel, without retyping anything.
 - The HR Manager can answer *"What are the minimum, maximum and average salaries in country X?"* and *"What is the average salary for job title Y in country X?"* in under a minute, with no formulas.
 - The tool stays responsive with the full 10,000-employee dataset loaded.
@@ -31,14 +31,14 @@ The HR Manager cannot reliably maintain salary records for 10,000 people across 
 2. **Search & filter:** search by name. Filter by country, department and job title.
 3. **Manage employees:** add and edit an employee and their salary, with validation.
 4. **Salary history:** every salary change is kept with its effective date and an optional reason. The employee's page shows the full history, newest first.
-5. **Remove & restore (soft delete):** removing an employee marks them as *left* with an exit date instead of deleting them. Former employees are hidden from the list and the insights by default, can be viewed with a filter, and can be restored.
+5. **Delete (soft delete) & rehire:** deleting an employee marks them *inactive* with an exit date instead of erasing them. Inactive employees are hidden from the list and the insights by default, can be viewed with a filter, and are read-only. A returning employee is added as a new record linked to the earlier one. There is no restore.
 6. **Country pay insights:** for each country, the headcount and the minimum, maximum, average (mean) and median salary, in that country's currency.
 7. **Job-title pay insights within a country:** the same statistics for each job title in a selected country.
 8. **Organisation-wide comparison:** headcount and average salary by country and by department, converted to one reference currency (US dollars) using a fixed, dated table of exchange rates that is clearly labelled as approximate.
 9. **Excel export:** download the current (filtered) employee list as an `.xlsx` file in the same column layout the import accepts.
 10. **Excel import:** upload an `.xlsx` file in a downloadable template layout. Show a preview of rows to be created, rows to be updated and any errors before anything is saved. Import all rows or none.
 
-**Employee record:** employee ID (assigned automatically), full name, work email (unique), job title, department, country, currency (set from the country), current annual base salary (in local currency), employment type (full-time / part-time / contractor), hire date, status (active / left), exit date (when left).
+**Employee record:** employee ID (assigned automatically), full name, work email (unique), job title, department, country, currency (set from the country), current annual base salary (in local currency), employment type (full-time / part-time / contractor), hire date, status (active / inactive), exit date (when inactive).
 
 **Salary history entry:** amount, currency, effective date, reason (optional, e.g. "Annual review", "Promotion"). The current salary is the entry with the latest effective date.
 
@@ -78,7 +78,7 @@ The HR Manager cannot reliably maintain salary records for 10,000 people across 
 - **H2:** Comparing countries with a fixed, dated exchange-rate table is "good enough" for the HR Manager, provided it is clearly labelled approximate. This scopes IN feature 8 and OUT live rates. If rejected, feature 8 drops to local-currency-only views.
 - **H3:** The HR Manager needs to see how an employee's pay got to where it is (raises, promotions), not just the current number. This scopes IN salary history. Insights still use current salary only.
 - **H7:** HR keeps working partly in Excel during and after migration, so data must round-trip: export → edit → import. This scopes IN import and export with one shared template.
-- **H8:** Removing an employee by mistake must be recoverable, and pay records of people who left still matter. This scopes IN soft delete with restore.
+- **H8:** Removing an employee by mistake must be recoverable, and pay records of people who left still matter. This scopes IN soft delete. (Restore was later replaced by rehire-and-link in the spec.)
 - **H4:** Each country uses exactly one currency, so currency is set from the country and never entered separately.
 - **H5:** Job titles are free text. Insights group titles that differ only in letter case or surrounding spaces ("Software Engineer" and " software engineer"). Departments and countries come from fixed lists.
 - **H6:** A single unauthenticated HR Manager user is acceptable for a demo that uses only synthetic data.
@@ -138,6 +138,8 @@ Thinnest end-to-end path: seeded database → backend → UI list.
 - [ ] After a country change, the next salary entry is recorded in the new country's currency, and earlier entries keep their original currency.
 
 ### Slice 6: Remove & restore an employee (soft delete)
+> **Superseded in the spec:** restore was replaced by rehire-and-link, and status *left* by *inactive*. See [`salary-management-spec.md`](salary-management-spec.md), Slice 6.
+
 - [ ] HR Manager is asked to confirm, and to give an exit date, before an employee is removed.
 - [ ] After confirming, the employee no longer appears in the default list or in any insight.
 - [ ] Cancelling the confirmation leaves the employee unchanged.
@@ -192,7 +194,7 @@ Thinnest end-to-end path: seeded database → backend → UI list.
 
 ## Module Structure
 *(Greenfield project)*
-- `employees/` owns Employee, EmploymentType, EmployeeStatus (active/left), SalaryHistoryEntry, employee validation, salary change rules, soft delete/restore, search/filter/pagination. Depends on: `reference/`
+- `employees/` owns Employee, EmploymentType, EmployeeStatus (active/inactive), SalaryHistoryEntry, employee validation, salary change rules, soft delete, rehire linking, search/filter/pagination. Depends on: `reference/`
 - `reference/` owns Country, Currency, Department, ExchangeRate (fixed reference data). Depends on: (none)
 - `insights/` owns SalaryStatistics (min/max/mean/median), country and job-title breakdowns, reference-currency comparison. Depends on: `employees/`, `reference/`
 - `spreadsheet/` owns the import/export template, Excel file reading and writing, import preview (create/update/error rows) and all-or-nothing apply. Depends on: `employees/`, `reference/`
@@ -218,7 +220,7 @@ Thinnest end-to-end path: seeded database → backend → UI list.
 - **Countries:** the 8 listed under Assumptions (US, UK, India, Germany, Canada, Australia, Singapore, Japan), each with one currency.
 - **Departments:** a fixed list, not editable by the HR Manager.
 - **Page size:** fixed at 25 employees per page.
-- **Removal through import:** not supported. Employees are marked as *left* only in the UI.
+- **Removal through import:** not supported. Employees are marked *inactive* only in the UI.
 - **Effective date of imported salary changes:** the import date. The file does not carry an effective date.
 
 ## Open Questions

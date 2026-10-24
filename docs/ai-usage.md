@@ -98,4 +98,69 @@ I will commit myself, can you can setup the .gitignore as well
 
 ## Phase 2: Spec
 
-_(next: `/bee:spec-writer`)_
+### 8. Generate the spec
+
+```
+/bee:spec-writer
+```
+
+**AI output:** `docs/specs/salary-management-spec.md`, built from the reviewed discovery doc.
+
+-   **Shared rules**, defined once and used by the add form, the edit form and import: reference data, validation rules, salary display format, and how the current salary is chosen.
+-   **12 vertical slices**, with 7–12 testable acceptance criteria each. The AI split Excel import into "preview (saves nothing)" and "confirm & apply (all or nothing)" so each fits one plan.
+-   Cross-cutting accessibility ACs, indicative API and data shapes, the template layout, an extended out-of-scope list, and technical guidance: pure statistics functions, an injectable clock, and paging and aggregation on the server.
+-   20 new assumptions, listed for my confirmation.
+
+### 9. Spec review: 7 inline comments
+
+```
+check
+```
+
+I added these `@bee` annotations in the spec:
+
+```
+@bee let's keep salary change reason as text for now with no length limits.
+@bee if clickable option is possible then that should also be considered instead of only keyboard
+@bee this should be delete instead of removal
+@bee may be we should not give restoration option instead create new employee and if the employee already existed then link it with but not restoration to keep the history clean
+@bee status should be active or inactive instead of left, inactive should be treated as left
+@bee since max salary limit it just for validation lets increase it, add one more zero in it
+@bee let's make name, email, title text field instead of varchar type lenght limit as this limit doesn't give any meaningful performance advantage but we will trim for left right white spaces and any other validation that needs except string length.
+```
+
+**My decisions:**
+
+-   **No restore of deleted employees.** The AI had proposed restoring inactive records. I replaced that with *rehire as a new employee linked to the earlier record*, so each period of employment keeps a clean, separate salary history.
+-   **Status `active` / `inactive`** instead of `left`, and the REST verb `DELETE` for the soft delete.
+-   **No arbitrary length limits** on text fields. They don't give a meaningful performance or product benefit. Trimming and format checks stay.
+-   **Looser salary maximums** (10×). They are only a typo check.
+-   **Pointer and touch input** stated explicitly as an AC, alongside keyboard accessibility.
+
+**AI output:**
+
+-   Applied every change and left a comment card beside each one explaining the edit.
+-   Rewrote Slice 6 around rehire and linking:
+    -   email unique among *active* employees only
+    -   the rehire's hire date must be after the earlier exit date
+    -   linked employment records shown on the employee page
+    -   import rows for inactive emails classified as unchanged, rehire or error
+-   Flagged the trade-off: an accidental delete is fixed by re-adding the person, not by undoing it.
+-   Flagged a consequence of my salary change: the INR and JPY maximums (4–7.5 billion) exceed 32-bit integers, so salaries need 64-bit storage. Added this as a technical note for the planner.
+-   Kept `docs/requirements.md` and the discovery doc consistent with the new decisions.
+
+### 10. Approve the spec
+
+```
+yes update ai-usage.md and check
+```
+
+(after I marked `[x] Reviewed` in the spec)
+
+**AI output:** this log updated, and the spec marked as confirmed.
+
+---
+
+## Phase 3: Plan
+
+_(next: `/bee:planner`)_
