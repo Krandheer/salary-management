@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useCountryName } from '@/api/reference';
 import { formatDate, formatSalary } from '@/shared/format';
 
 function TruncatedCell({ text }: { text: string }) {
@@ -24,6 +25,7 @@ interface EmployeeTableProps {
 }
 
 export function EmployeeTable({ employees, showExitDate = false }: EmployeeTableProps) {
+  const countryName = useCountryName();
   return (
     <Table>
       <TableHeader>
@@ -42,7 +44,7 @@ export function EmployeeTable({ employees, showExitDate = false }: EmployeeTable
             <TruncatedCell text={employee.fullName} />
             <TruncatedCell text={employee.jobTitle} />
             <TruncatedCell text={employee.department} />
-            <TableCell className="px-3 py-2">{employee.country}</TableCell>
+            <TableCell className="px-3 py-2">{countryName(employee.country)}</TableCell>
             <TableCell className="px-3 py-2 text-right tabular-nums">
               {formatSalary(employee.currentSalary, employee.currency)}
             </TableCell>

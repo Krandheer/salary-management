@@ -14,3 +14,9 @@ export function useReference() {
     staleTime: Infinity,
   });
 }
+
+/** Turns a country code into its display name; shows the code until the reference data has loaded. */
+export function useCountryName(): (code: string) => string {
+  const countries = useReference().data?.countries;
+  return (code) => countries?.find((country) => country.code === code)?.name ?? code;
+}

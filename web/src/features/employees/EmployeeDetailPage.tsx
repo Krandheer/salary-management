@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import type { EmployeeDetail } from '@acme/contracts';
 import { useEmployee } from '@/api/employees';
+import { useCountryName } from '@/api/reference';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatDate, formatSalary } from '@/shared/format';
@@ -21,6 +22,7 @@ function DetailRow({ term, children }: { term: string; children: string }) {
 }
 
 function EmployeeDetails({ employee }: { employee: EmployeeDetail }) {
+  const countryName = useCountryName();
   return (
     <>
       <div className="flex items-center gap-3">
@@ -44,7 +46,7 @@ function EmployeeDetails({ employee }: { employee: EmployeeDetail }) {
         <DetailRow term="Work email">{employee.email}</DetailRow>
         <DetailRow term="Job title">{employee.jobTitle}</DetailRow>
         <DetailRow term="Department">{employee.department}</DetailRow>
-        <DetailRow term="Country">{employee.country}</DetailRow>
+        <DetailRow term="Country">{countryName(employee.country)}</DetailRow>
         <DetailRow term="Currency">{employee.currency}</DetailRow>
         <DetailRow term="Employment type">{employee.employmentType}</DetailRow>
         <DetailRow term="Hire date">{formatDate(employee.hireDate)}</DetailRow>

@@ -84,7 +84,9 @@ describe('EmployeeDetailPage', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Asha Rao' });
     expect(screen.getByText('Employee ID').nextElementSibling).toHaveTextContent('7');
-    expect(screen.getByText('Country').nextElementSibling).toHaveTextContent('India');
+    await waitFor(() =>
+      expect(screen.getByText('Country').nextElementSibling).toHaveTextContent('India'),
+    );
     expect(screen.getByText('Currency').nextElementSibling).toHaveTextContent('INR');
     expect(screen.getByText('Current salary').nextElementSibling).toHaveTextContent(
       'INR 1,850,000',
