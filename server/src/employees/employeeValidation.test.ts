@@ -6,11 +6,13 @@ import {
   validateDepartment,
   validateEmail,
   validateEmployeeFields,
+  validateEmployeeUpdate,
   validateEmploymentType,
   validateFullName,
   validateHireDate,
   validateJobTitle,
 } from './employeeValidation.ts';
+import type { EmployeeFields } from './employeeValidation.ts';
 
 const TODAY = '2026-10-24';
 
@@ -223,5 +225,137 @@ describe('validateEmployeeFields', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(Object.keys(result.fieldErrors)).toEqual(['annualSalary']);
+  });
+});
+
+describe('validateEmployeeUpdate', () => {
+  const current: EmployeeFields = {
+    fullName: 'Asha Rao',
+    email: 'asha.rao@acme.example',
+    jobTitle: 'Software Engineer',
+    department: 'Engineering',
+    countryCode: 'IN',
+    employmentType: 'Full-time',
+    hireDate: '2024-03-01',
+    annualSalary: 1_850_000,
+  };
+  const context = { today: TODAY, earliestSalaryDate: '2024-03-01' };
+
+  it('keeps every field the patch leaves out and normalises the ones it changes', () => {
+    const result = validateEmployeeUpdate(current, { jobTitle: '  Staff Engineer ' }, context);
+
+    expect(result).toEqual({
+      ok: true,
+      fields: { ...current, jobTitle: 'Staff Engineer' },
+      salaryChange: null,
+    });
+  });
+
+  it('accepts an empty patch', () => {
+    expect(validateEmployeeUpdate(current, {}, context)).toEqual({
+      ok: true,
+      fields: current,
+      salaryChange: null,
+    });
+  });
+
+  it('re-applies the shared field rules to the merged result', () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { email: 'nope', fullName: '   ', department: 'Astrology', hireDate: '2999-01-01' },
+      context,
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fieldErrors).sort()).toEqual([
+      'department',
+      'email',
+      'fullName',
+      'hireDate',
+    ]);
+  });
+
+  it('returns a salary change dated today with no reason', () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { salaryChange: { amount: '2000000' } },
+      context,
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      fields: { ...current, annualSalary: 2_000_000 },
+      salaryChange: { amount: 2_000_000, effectiveDate: TODAY, reason: null },
+    });
+  });
+
+  it('asks for a new salary when the country changes without one', () => {
+    const result = validateEmployeeUpdate(current, { country: 'US' }, context);
+
+    expect(result).toEqual({
+      ok: false,
+      fieldErrors: { 'salaryChange.amount': expect.stringMatching(/new salary/i) },
+    });
+  });
+
+  it('accepts a country change that comes with a new salary', () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { country: 'US', salaryChange: { amount: 90_000 } },
+      context,
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      fields: { countryCode: 'US', annualSalary: 90_000 },
+      salaryChange: { amount: 90_000 },
+    });
+  });
+
+  it('checks the new salary against the maximum of the new country', () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { country: 'GB', salaryChange: { amount: 50_000_000 } },
+      context,
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fieldErrors)).toEqual(['salaryChange.amount']);
+    expect(result.fieldErrors['salaryChange.amount']).toMatch(/cannot be more than 40,000,000/);
+  });
+
+  it.each([['abc'], [0], [-5], [1.5], ['']])(
+    'reports a salary change of %j under salaryChange.amount',
+    (amount) => {
+      const result = validateEmployeeUpdate(current, { salaryChange: { amount } }, context);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(Object.keys(result.fieldErrors)).toEqual(['salaryChange.amount']);
+    },
+  );
+
+  it('rejects a hire date later than the earliest salary history entry', () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { hireDate: '2024-03-02' },
+      { ...context, earliestSalaryDate: '2024-03-01' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors.hireDate).toMatch(/earliest salary/i);
+  });
+
+  it('accepts a hire date equal to the earliest salary history entry', () => {
+    const result = validateEmployeeUpdate(
+      current,
+      { hireDate: '2024-06-01' },
+      { ...context, earliestSalaryDate: '2024-06-01' },
+    );
+
+    expect(result).toMatchObject({ ok: true, fields: { hireDate: '2024-06-01' } });
   });
 });

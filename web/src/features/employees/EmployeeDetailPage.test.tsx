@@ -67,6 +67,31 @@ describe('EmployeeDetailPage', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
+  it('shows the employee id, country, currency and current salary', async () => {
+    requestJsonMock.mockResolvedValue(detail);
+
+    renderDetail('7');
+
+    await screen.findByRole('heading', { level: 1, name: 'Asha Rao' });
+    expect(screen.getByText('Employee ID').nextElementSibling).toHaveTextContent('7');
+    expect(screen.getByText('Country').nextElementSibling).toHaveTextContent('IN');
+    expect(screen.getByText('Currency').nextElementSibling).toHaveTextContent('INR');
+    expect(screen.getByText('Current salary').nextElementSibling).toHaveTextContent(
+      'INR 1,850,000',
+    );
+  });
+
+  it('links to the edit page', async () => {
+    requestJsonMock.mockResolvedValue(detail);
+
+    renderDetail('7');
+
+    expect(await screen.findByRole('link', { name: 'Edit' })).toHaveAttribute(
+      'href',
+      '/employees/7/edit',
+    );
+  });
+
   it('shows a not-found message when the employee does not exist', async () => {
     requestJsonMock.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'Employee not found'));
 

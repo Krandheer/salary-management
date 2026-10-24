@@ -585,3 +585,183 @@ describe('GET /api/employees/:id', () => {
     expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('PATCH /api/employees/:id', () => {
+  const patch = (app: ReturnType<typeof createTestApp>['app'], id: number | string, body: object) =>
+    request(app).patch(`/api/employees/${id}`).send(body);
+  const getDetail = async (app: ReturnType<typeof createTestApp>['app'], id: number) =>
+    (await request(app).get(`/api/employees/${id}`)).body as EmployeeDetail;
+
+  it('changes a non-salary field and shows it on the detail and in the list', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { fullName: 'Asha Rao', jobTitle: 'Engineer' });
+
+    const response = await patch(app, id, { jobTitle: '  Staff Engineer ' });
+
+    expect(response.status).toBe(200);
+    expect((response.body as EmployeeDetail).jobTitle).toBe('Staff Engineer');
+    expect((await getDetail(app, id)).jobTitle).toBe('Staff Engineer');
+    const list = await getPage(app);
+    expect(list.body.items[0]?.jobTitle).toBe('Staff Engineer');
+  });
+
+  it('finds an employee by the new name and job title after they change', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { fullName: 'Asha Rao', jobTitle: 'Engineer' });
+
+    await patch(app, id, { fullName: 'Meera Nair', jobTitle: 'Designer' });
+
+    expect((await getPage(app, '?search=meera')).body.items).toHaveLength(1);
+    expect((await getPage(app, '?search=asha')).body.items).toHaveLength(0);
+    const titles = (await request(app).get('/api/employees/job-titles')).body as JobTitleOptions;
+    expect(titles.jobTitles).toEqual(['Designer']);
+  });
+
+  it('adds a salary history entry and shows the new amount in the list', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      salaryHistory: [{ amount: 80_000, effectiveDate: '2020-01-15', reason: 'Starting salary' }],
+    });
+
+    const response = await patch(app, id, { salaryChange: { amount: '95000' } });
+
+    expect(response.status).toBe(200);
+    const detail = response.body as EmployeeDetail;
+    expect(detail.currentSalary).toBe(95_000);
+    expect(detail.salaryHistory.map((entry) => [entry.amount, entry.effectiveDate])).toEqual([
+      [95_000, '2026-10-24'],
+      [80_000, '2020-01-15'],
+    ]);
+    expect(detail.salaryHistory[1]?.reason).toBe('Starting salary');
+    expect((await getPage(app)).body.items[0]?.currentSalary).toBe(95_000);
+  });
+
+  it('accepts the employee own email unchanged, whatever its letter case', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { email: 'asha@acme.example' });
+
+    const response = await patch(app, id, { email: 'Asha@Acme.example', jobTitle: 'Lead' });
+
+    expect(response.status).toBe(200);
+    expect((response.body as EmployeeDetail).email).toBe('asha@acme.example');
+  });
+
+  it('answers 409 and changes nothing when the email belongs to another active employee', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { jobTitle: 'Engineer' });
+    insertEmployee(db, { email: 'taken@acme.example' });
+
+    const response = await patch(app, id, { email: 'TAKEN@acme.example', jobTitle: 'Lead' });
+
+    expect(response.status).toBe(409);
+    expect((response.body as ApiErrorBody).error.code).toBe('EMAIL_TAKEN');
+    expect((await getDetail(app, id)).jobTitle).toBe('Engineer');
+  });
+
+  it('changes the currency with the country and keeps earlier entries in their own currency', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { countryCode: 'US' });
+
+    const response = await patch(app, id, { country: 'GB', salaryChange: { amount: 70_000 } });
+
+    expect(response.status).toBe(200);
+    const detail = response.body as EmployeeDetail;
+    expect(detail).toMatchObject({ country: 'GB', currency: 'GBP', currentSalary: 70_000 });
+    expect(detail.salaryHistory.map((entry) => entry.currency)).toEqual(['GBP', 'USD']);
+    expect((await getPage(app)).body.items[0]).toMatchObject({ country: 'GB', currency: 'GBP' });
+  });
+
+  it('answers 400 on salaryChange.amount when the country changes without a new salary', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { countryCode: 'US' });
+
+    const response = await patch(app, id, { country: 'GB' });
+
+    expect(response.status).toBe(400);
+    const { error } = response.body as ApiErrorBody;
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(Object.keys(error.fieldErrors ?? {})).toEqual(['salaryChange.amount']);
+    expect((await getDetail(app, id)).country).toBe('US');
+  });
+
+  it('answers 400 on hireDate when it moves later than the earliest salary entry', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      hireDate: '2020-01-15',
+      salaryHistory: [{ amount: 80_000, effectiveDate: '2020-03-01' }],
+    });
+
+    const later = await patch(app, id, { hireDate: '2020-03-02' });
+    const equal = await patch(app, id, { hireDate: '2020-03-01' });
+
+    expect(later.status).toBe(400);
+    expect(Object.keys((later.body as ApiErrorBody).error.fieldErrors ?? {})).toEqual(['hireDate']);
+    expect(equal.status).toBe(200);
+    expect((equal.body as EmployeeDetail).hireDate).toBe('2020-03-01');
+  });
+
+  it('applies the shared validation rules to edits', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db);
+
+    const response = await patch(app, id, { email: 'nope', salaryChange: { amount: 0 } });
+
+    expect(response.status).toBe(400);
+    const fieldErrors = (response.body as ApiErrorBody).error.fieldErrors ?? {};
+    expect(Object.keys(fieldErrors).sort()).toEqual(['email', 'salaryChange.amount']);
+  });
+
+  it('changes nothing when any part of the patch is invalid', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, { jobTitle: 'Engineer' });
+    const before = await getDetail(app, id);
+
+    const response = await patch(app, id, {
+      jobTitle: 'Lead',
+      salaryChange: { amount: 'lots' },
+    });
+
+    expect(response.status).toBe(400);
+    expect(await getDetail(app, id)).toEqual(before);
+  });
+
+  it.each(['999', '0', 'abc'])('answers 404 for an unknown id %s on PATCH', async (id) => {
+    const { app } = createTestApp();
+
+    const response = await patch(app, id, { jobTitle: 'Lead' });
+
+    expect(response.status).toBe(404);
+    expect((response.body as ApiErrorBody).error.code).toBe('NOT_FOUND');
+  });
+
+  it('answers 409 for an inactive employee and changes nothing', async () => {
+    const { app, db } = createTestApp();
+    const id = insertEmployee(db, {
+      status: 'inactive',
+      exitDate: '2025-01-01',
+      jobTitle: 'Engineer',
+    });
+
+    const response = await patch(app, id, { jobTitle: 'Lead' });
+
+    expect(response.status).toBe(409);
+    expect((response.body as ApiErrorBody).error.code).toBe('EMPLOYEE_INACTIVE');
+    expect((await getDetail(app, id)).jobTitle).toBe('Engineer');
+  });
+});
+
+describe('malformed JSON request body', () => {
+  it('answers 400 VALIDATION_FAILED instead of a server error', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app)
+      .post('/api/employees')
+      .set('Content-Type', 'application/json')
+      .send('{"fullName": ');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: { code: 'VALIDATION_FAILED', message: 'Request body is not valid JSON' },
+    });
+  });
+});
