@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { EmailCheckResult, JobTitleOptions } from '@acme/contracts';
+import { asRecord } from '../shared/records.ts';
 import { NotFoundError } from '../shared/errors.ts';
 import { parseEmployeeFilters, parseEmployeeListQuery } from './employeeListQuery.ts';
 import type { EmployeeService } from './employeeService.ts';
@@ -7,13 +8,6 @@ import type { EmployeeService } from './employeeService.ts';
 function parseEmployeeId(raw: string): number {
   if (!/^[1-9]\d*$/.test(raw)) throw new NotFoundError(`Employee ${raw} not found`);
   return Number(raw);
-}
-
-/** A JSON request body as a plain object; anything else counts as an empty body. */
-function toInputRecord(body: unknown): Record<string, unknown> {
-  return typeof body === 'object' && body !== null && !Array.isArray(body)
-    ? (body as Record<string, unknown>)
-    : {};
 }
 
 export function employeeRouter(service: EmployeeService): Router {
@@ -30,13 +24,13 @@ export function employeeRouter(service: EmployeeService): Router {
     res.json(service.checkEmail(email) satisfies EmailCheckResult);
   });
   router.post('/api/employees', (req, res) => {
-    res.status(201).json(service.createEmployee(toInputRecord(req.body)));
+    res.status(201).json(service.createEmployee(asRecord(req.body)));
   });
   router.get('/api/employees/:id', (req, res) => {
     res.json(service.getEmployee(parseEmployeeId(req.params.id)));
   });
   router.patch('/api/employees/:id', (req, res) => {
-    res.json(service.updateEmployee(parseEmployeeId(req.params.id), toInputRecord(req.body)));
+    res.json(service.updateEmployee(parseEmployeeId(req.params.id), asRecord(req.body)));
   });
   router.delete('/api/employees/:id', (req, res) => {
     res.json(service.deleteEmployee(parseEmployeeId(req.params.id), req.query.exitDate));
