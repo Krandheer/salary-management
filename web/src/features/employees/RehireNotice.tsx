@@ -13,7 +13,7 @@ export function RehireNotice({ earlier }: { earlier: LinkedEmployment[] }) {
         <ul>
           {earlier.map((item) => (
             <li key={item.id}>
-              ID {item.id}, hired {item.hireDate}, left {item.exitDate}.{' '}
+              {item.fullName} (ID {item.id}), hired {item.hireDate}, left {item.exitDate}.{' '}
               <Link to={`/employees/${item.id}`} aria-label={`Open employee ${item.id}`}>
                 Open
               </Link>

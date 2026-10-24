@@ -124,6 +124,7 @@ function toStoredEmployee(row: StoredEmployeeQueryRow): StoredEmployee {
 
 const LINK_COLUMNS = {
   id: employees.id,
+  fullName: employees.fullName,
   hireDate: employees.hireDate,
   exitDate: employees.exitDate,
   status: employees.status,

@@ -90,6 +90,7 @@ export interface SalaryHistoryEntry {
 /** Another employment record that shares the employee's email. */
 export interface LinkedEmployment {
   id: number;
+  fullName: string;
   hireDate: IsoDate;
   exitDate: IsoDate | null;
   status: EmployeeStatus;
