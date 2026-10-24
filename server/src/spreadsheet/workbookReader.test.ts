@@ -335,6 +335,54 @@ describe('readImportFile: row numbers and the bounds of what a sheet holds', () 
   });
 });
 
+describe('readImportFile: the bounds of what the workbook parts list', () => {
+  async function withPart(partName: string, rewrite: (xml: string) => string): Promise<Buffer> {
+    return rewritePart(await buildImportFile([anImportRow()]), partName, rewrite);
+  }
+
+  function repeated(count: number, element: (index: number) => string): string {
+    return Array.from({ length: count }, (_, index) => element(index)).join('');
+  }
+
+  it('rejects a workbook listing more than 1,000 sheets, more than it may have parts', async () => {
+    const content = await withPart('xl/workbook.xml', (xml) =>
+      xml.replace('</sheets>', `${'<sheet sheetId="0"/>'.repeat(1_001)}</sheets>`),
+    );
+
+    await expectRejection(readImportFile(content, FILE_NAME), 'INVALID_FILE');
+  });
+
+  it('rejects a workbook with more than 1,000 relationships, more than it may have parts', async () => {
+    const content = await withPart('xl/_rels/workbook.xml.rels', (xml) =>
+      xml.replace(
+        '</Relationships>',
+        `${repeated(1_001, (index) => `<Relationship Id="extra${index}" Target="x.xml"/>`)}</Relationships>`,
+      ),
+    );
+
+    await expectRejection(readImportFile(content, FILE_NAME), 'INVALID_FILE');
+  });
+
+  it("rejects more cell formats than Excel's 65,490", async () => {
+    const content = await withPart('xl/styles.xml', (xml) =>
+      xml.replace('</cellXfs>', `${'<xf numFmtId="0"/>'.repeat(65_490)}</cellXfs>`),
+    );
+
+    await expectRejection(readImportFile(content, FILE_NAME), 'INVALID_FILE');
+  });
+
+  it("rejects more number formats than Excel's 65,490 cell formats could use", async () => {
+    const content = await withPart('xl/styles.xml', (xml) =>
+      xml.replace(
+        '<fonts',
+        `<numFmts>${repeated(65_491, (index) => `<numFmt numFmtId="${164 + index}" formatCode="0"/>`)}</numFmts><fonts`,
+      ),
+    );
+
+    await expectRejection(readImportFile(content, FILE_NAME), 'INVALID_FILE');
+  });
+});
+
 const HIRE_DATE = new Date('2021-03-15T00:00:00.000Z');
 
 /** One row per kind of cell a spreadsheet application writes, in the template's nine columns. */
