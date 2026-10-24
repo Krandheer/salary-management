@@ -212,4 +212,122 @@ node default 24 is done, I reviewed the plan you can mark it review, plz update 
 
 ## Phase 4: Build
 
-_(next: `/bee:plan-implementer`)_
+### 14. Build the plan, test-first
+
+```
+/bee:plan-implementer but we have to write test first and have to increment build and commit
+```
+
+(followed by: `incremental i meant`)
+
+**My decisions:**
+
+-   **Strict test-first.** Every slice starts with failing tests, confirmed red before any production code.
+-   **Two commits per slice,** so the history shows test-first: `test(...)` (red), then `feat(...)` (green).
+-   **Commit straight to `main`.**
+
+**AI output:**
+
+-   The build runs one slice-builder agent per slice, in plan order, each on the model tier the plan assigned.
+-   It flagged that the root `package.json` had an accidental dependency named `24` (from `npm i 24`), which Slice 1a replaces.
+-   It noted that the session shell still resolved Node 22, so every build command is prefixed with Node 24's path.
+
+**How the build ran:**
+
+-   **One agent per slice:** each slice was built by a fresh agent on the model the plan assigned, in plan order.
+-   **Commits per slice:** an optional `chore`, then `test(...)(slice N, red)`, then `feat(...)(slice N)`.
+-   **Shared notes:** builders handed context to each other through a shared notes file (gitignored).
+-   **Independent re-check:** after each slice the orchestrator re-ran lint, typecheck and the full test suite itself, rather than trusting the builder's report.
+
+**Which model built which slice** (this matches each commit's `Co-Authored-By` trailer):
+
+| Slice | What | Model tier → model |
+|---|---|---|
+| 1a | Workspace, schema, reference data, seed | excellent → Sonnet |
+| 1b | Employee list API + UI shell | excellent → Sonnet |
+| 2 | Search & filter | excellent → Sonnet |
+| 3 | Add an employee, shared validation | excellent → Sonnet |
+| 4 | Edit / update salary | excellent → Sonnet |
+| 5 | Salary history | excellent → Sonnet |
+| 6 | Soft delete & rehire | excellent → Sonnet |
+| 7 | Country insights | excellent → Sonnet |
+| 8 | Job-title insights | excellent → Sonnet |
+| 9 | Org-wide USD comparison | fast → Haiku |
+| 10 | Excel export & template | excellent → Sonnet |
+| 11 | Import preview | best → Opus |
+| 12 | Import apply (all or nothing) | best → Opus |
+| 13 | Production serving, Docker, docs | excellent → Sonnet |
+| Review fixes 1, 2, 5 | Data integrity, upload memory/XML hardening | best → Opus |
+| Review fixes 3, 4 | Server refactors, web + test fixes | excellent → Sonnet |
+
+The planning, orchestration and all review passes ran on Opus.
+
+**A correction in the history:** in Slice 7 the red commit (`ddabb51`) encoded a wrong expected mean (`2,000,001`). The correct value is `2,000,000`, because the mean is 2,000,000.25, which rounds half-up to 2,000,000. The feat commit (`238fd93`) corrected the test, and its message doesn't say so. The implementation was right; the test-first expectation was wrong.
+
+**A false start on Node:** the build shell kept resolving Node 22, so every build command was prefixed with Node 24's path rather than restarting the session.
+
+## Phase 5: Review, fix, verify
+
+### 15. End-of-spec review (automatic, part of `/bee:plan-implementer`)
+
+Five review agents ran in parallel over the whole diff:
+
+-   overall correctness and security, with a mandatory security pass over migrations, SQL built from user input, and the uploaded file;
+-   module coupling;
+-   test quality;
+-   clean code;
+-   commit-history practices.
+
+The reviewers wrote probe scripts and reproduced bugs, not just read code. They found:
+
+-   **HIGH: currency mismatch.** A backdated salary change made together with a country change left the current salary in the old currency. That corrupted insights and broke the export → import round trip.
+-   **HIGH: one upload could exhaust memory.** A file under 10 MB unzipped to 95 MB, and the Excel library's in-memory model then reached about 1.5 GB of RSS, which would kill the planned 512 MB host.
+-   **MED: rehire rule gaps.** The rule wasn't enforced on edits or import updates, and re-importing an inactive export could overwrite a rehired employee.
+-   **MED: the flaky web test, root-caused.** A "Clear filters" assertion raced a React Query refetch, plus a stale debounced request. The orchestrator had seen the test fail twice but couldn't reproduce it in about 30 reruns.
+-   **MED: a module cycle**, `employees` ↔ `spreadsheet`.
+-   **MED: duplication and oversized files.** Grouping helpers, column mapping and date rules were duplicated, and the validation and repository files were too large.
+-   **LOW: smaller gaps.** Country codes were shown instead of names, the rehire notice didn't name the person, some 404 tests would pass without the feature, and keyboard tests were missing for the cross-cutting ACs.
+
+### 16. Fix batches (each test-first: a `test(...)(review fix, red)` commit, then `fix(...)`)
+
+1.  **Current-salary currency and rehire rule.** A new append-only migration exposes the current salary's effective date, so a backdated change during a country move is rejected. The rehire rule now applies on edits and imports, and a row identical to any stored record counts as unchanged. The spec was updated to match (`28a6bb2`).
+2.  **Upload memory.** The AI first checked exceljs's own streaming reader and found it mis-reads rich text and formula results. It also found that a row-count pre-scan doesn't bound memory. So it wrote a small streaming reader over jszip + saxes that reads only the parts the import needs, with tests checking it matches exceljs cell by cell. The unzipped limit dropped from 100 MB to 24 MB. Results: the 380k-row probe went from 1.43 GB to 106 MB, and a normal 20k-row file from 352 MB to 141 MB.
+3.  **Behaviour-preserving refactors**, five commits:
+    -   neutral read models in `employees/`, plus a lint rule that enforces module direction;
+    -   one `groupBy`;
+    -   single sources for the column mapping, the history rule and the "Starting salary" reason;
+    -   the validation file split into focused rule files.
+4.  **Web and test fixes:**
+    -   "Clear filters" applies immediately;
+    -   fake-timer debounce tests;
+    -   country names in the UI, and the rehire notice now names the person;
+    -   stronger 404 assertions;
+    -   keyboard-only and visible-label tests;
+    -   a 768px layout fix.
+5.  **XML and zip hardening, found by re-review.** The reviewer re-ran its probes and found a 25 KB file of deeply nested XML still crashed Node. Fixes: caps on XML depth, attributes, shared strings, columns, zip entries, sheets, relationships and style records. Every crafted file now returns 400 in under about 0.6 s with a 256 MB heap.
+
+### 17. Connect browser automation
+
+```
+can you connect browser automation tool as well to check screen
+```
+
+**AI output:** connected Claude in Chrome. The browser-verifier agent then drove the running production build through every slice's UI ACs and the cross-cutting checks:
+
+-   pagination, filters, add, edit, history, delete, rehire notice, insights tabs and the import UI;
+-   a visible focus ring, and no app console errors;
+-   no horizontal scroll at 768px on four pages.
+
+The orchestrator then checked the successful rehire path directly against the API, since the browser couldn't with today's dates. It also found and fixed perf tests being silently skipped by a fixture timeout when files ran in parallel (`5657dba`).
+
+**Final state:**
+
+| Check | Result |
+|---|---|
+| Server tests | 578 |
+| Web tests | 144 |
+| Perf tests | 11, all passing |
+| Lint, typecheck, production build | green |
+| Spec acceptance criteria | all ticked |
+
+**Not done:** the Docker image has never been built, because the daemon wasn't running. The deploy itself is left to me.
