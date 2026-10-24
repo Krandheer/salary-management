@@ -5,10 +5,19 @@ export interface Clock {
   now(): string;
 }
 
-export function systemClock(_timeZone: string): Clock {
-  throw new Error('not implemented');
+export function systemClock(timeZone: string): Clock {
+  const dateFormat = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return {
+    today: () => dateFormat.format(new Date()),
+    now: () => new Date().toISOString(),
+  };
 }
 
-export function fixedClock(_today: IsoDate): Clock {
-  throw new Error('not implemented');
+export function fixedClock(today: IsoDate): Clock {
+  return { today: () => today, now: () => `${today}T00:00:00.000Z` };
 }

@@ -77,10 +77,10 @@ Seeded database, then the API, then a paginated list in the UI.
 -   [ ] Shows a "No employees yet" message when there are no employees.
 -   [ ] Shows an error message with a retry option when the employee list fails to load.
 -   [ ] With 10,000 employees loaded, the first page appears within 1 second.
--   [ ] The seed command creates 10,000 active employees, covering all 8 countries and all 10 departments.
--   [ ] Each seeded employee has 1 to 4 salary history entries. The first is effective on the hire date, and every entry is dated between the hire date and today.
--   [ ] Every seeded salary falls within the seed's configured range for that employee's country and job title.
--   [ ] Running the seed command a second time leaves the same 10,000 employees as running it once, with no duplicates.
+-   [x] The seed command creates 10,000 active employees, covering all 8 countries and all 10 departments.
+-   [x] Each seeded employee has 1 to 4 salary history entries. The first is effective on the hire date, and every entry is dated between the hire date and today.
+-   [x] Every seeded salary falls within the seed's configured range for that employee's country and job title.
+-   [x] Running the seed command a second time leaves the same 10,000 employees as running it once, with no duplicates.
 
 ## Slice 2: Search & filter
 

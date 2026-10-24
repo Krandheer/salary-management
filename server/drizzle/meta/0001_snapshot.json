@@ -1,0 +1,289 @@
+{
+  "id": "9c3e3da9-d9ce-4f40-b61a-04598db9783d",
+  "prevId": "ebdb6db3-39f5-4e7e-96ce-df6bb1c29043",
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "employees": {
+      "name": "employees",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name_key": {
+          "name": "name_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_title": {
+          "name": "job_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_title_key": {
+          "name": "job_title_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "department": {
+          "name": "department",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "country_code": {
+          "name": "country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "employment_type": {
+          "name": "employment_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hire_date": {
+          "name": "hire_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "exit_date": {
+          "name": "exit_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "ux_employees_active_email": {
+          "name": "ux_employees_active_email",
+          "columns": [
+            "email"
+          ],
+          "where": "\"employees\".\"status\" = 'active'",
+          "isUnique": true
+        },
+        "ix_employees_status_name": {
+          "name": "ix_employees_status_name",
+          "columns": [
+            "status",
+            "name_key",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "ix_employees_email": {
+          "name": "ix_employees_email",
+          "columns": [
+            "email"
+          ],
+          "isUnique": false
+        },
+        "ix_employees_status_country": {
+          "name": "ix_employees_status_country",
+          "columns": [
+            "status",
+            "country_code",
+            "job_title_key"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "employees_status_check": {
+          "name": "employees_status_check",
+          "value": "\"employees\".\"status\" IN ('active', 'inactive')"
+        },
+        "employees_exit_date_matches_status": {
+          "name": "employees_exit_date_matches_status",
+          "value": "(\"employees\".\"status\" = 'inactive') = (\"employees\".\"exit_date\" IS NOT NULL)"
+        }
+      }
+    },
+    "salary_history": {
+      "name": "salary_history",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "ix_salary_history_employee": {
+          "name": "ix_salary_history_employee",
+          "columns": [
+            "employee_id",
+            "\"effective_date\" DESC",
+            "\"id\" DESC"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "salary_history_employee_id_employees_id_fk": {
+          "name": "salary_history_employee_id_employees_id_fk",
+          "tableFrom": "salary_history",
+          "columnsFrom": [
+            "employee_id"
+          ],
+          "tableTo": "employees",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "salary_history_amount_positive": {
+          "name": "salary_history_amount_positive",
+          "value": "\"salary_history\".\"amount\" > 0"
+        }
+      }
+    }
+  },
+  "views": {
+    "current_salaries": {
+      "name": "current_salaries",
+      "columns": {
+        "employee_id": {
+          "name": "employee_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "isExisting": true
+    }
+  },
+  "enums": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  },
+  "internal": {
+    "indexes": {
+      "ix_salary_history_employee": {
+        "columns": {
+          "\"effective_date\" DESC": {
+            "isExpression": true
+          },
+          "\"id\" DESC": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}

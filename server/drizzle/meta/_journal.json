@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792842456562,
+      "tag": "0000_real_aaron_stack",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792842457282,
+      "tag": "0001_current_salaries_view",
+      "breakpoints": true
+    }
+  ]
+}
