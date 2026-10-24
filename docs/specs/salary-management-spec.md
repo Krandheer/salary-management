@@ -182,13 +182,13 @@ Deleting never erases data. It sets the employee's status to **inactive**, with 
 
 ## Slice 8: Job-title insights within a country
 
--   [ ] HR Manager can choose a country, from a selector or from its row in the country insights, and see every job title in it with its headcount, A to Z.
--   [ ] For each job title, shows the minimum, maximum, mean and median salary in the country's currency, rounded as in Slice 7.
--   [ ] Job titles that differ only in letter case or surrounding spaces are counted as one title.
--   [ ] A grouped job title is labelled with the spelling most of its employees use, and ties go to the spelling that comes first A to Z.
--   [ ] A job title held by one employee shows that employee's salary as the minimum, maximum, mean and median.
--   [ ] Inactive employees are not counted.
--   [ ] Shows a "No employees in this country" message when the chosen country has no active employees.
+-   [x] HR Manager can choose a country, from a selector or from its row in the country insights, and see every job title in it with its headcount, A to Z.
+-   [x] For each job title, shows the minimum, maximum, mean and median salary in the country's currency, rounded as in Slice 7.
+-   [x] Job titles that differ only in letter case or surrounding spaces are counted as one title.
+-   [x] A grouped job title is labelled with the spelling most of its employees use, and ties go to the spelling that comes first A to Z.
+-   [x] A job title held by one employee shows that employee's salary as the minimum, maximum, mean and median.
+-   [x] Inactive employees are not counted.
+-   [x] Shows a "No employees in this country" message when the chosen country has no active employees.
 
 ## Slice 9: Organisation-wide comparison (US dollars)
 

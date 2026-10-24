@@ -104,7 +104,18 @@ describe('InsightsPage', () => {
   });
 
   it('moves to the job-title tab when "View job titles" is chosen for a country', async () => {
-    serveCountries({ countries: [aCountryInsight()] });
+    requestJsonMock.mockImplementation((url: string) => {
+      if (url === '/api/reference') return Promise.resolve(aReference());
+      if (url.endsWith('/job-titles')) {
+        return Promise.resolve({
+          country: 'IN',
+          countryName: 'India',
+          currency: 'INR',
+          jobTitles: [],
+        });
+      }
+      return Promise.resolve({ countries: [aCountryInsight()] });
+    });
     const user = userEvent.setup();
     renderWithProviders(<InsightsPage />);
 

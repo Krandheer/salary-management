@@ -10,6 +10,7 @@ export const queryKeys = {
   insights: {
     all: ['insights'] as const,
     countries: ['insights', 'countries'] as const,
+    jobTitles: (country: string) => ['insights', 'countries', country, 'job-titles'] as const,
   },
   reference: ['reference'] as const,
 };
