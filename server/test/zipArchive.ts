@@ -52,3 +52,24 @@ export async function readPart(archive: Buffer, partName: string): Promise<strin
   if (!part) throw new Error(`The archive has no part named ${partName}`);
   return part.async('string');
 }
+
+/** A copy of the archive with `count` more empty entries, as a zip packed with junk parts would have. */
+export async function withEmptyEntries(archive: Buffer, count: number): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(archive);
+  for (let index = 0; index < count; index += 1) zip.file(`junk-${index}.bin`, '');
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+/** How many entries, folders included, the archive holds. */
+export async function entryCountOf(archive: Buffer): Promise<number> {
+  return Object.keys((await JSZip.loadAsync(archive)).files).length;
+}
+
+/** A copy of the archive whose end record declares `count` entries, whatever it really holds. */
+export function withDeclaredEntryCount(archive: Buffer, count: number): Buffer {
+  const crafted = Buffer.from(archive);
+  const endRecord = crafted.lastIndexOf(END_OF_CENTRAL_DIRECTORY);
+  crafted.writeUInt16LE(count, endRecord + 8);
+  crafted.writeUInt16LE(count, endRecord + 10);
+  return crafted;
+}

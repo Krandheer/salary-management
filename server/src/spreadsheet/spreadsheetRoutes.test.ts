@@ -13,6 +13,7 @@ import {
   type ImportRowCells,
 } from '../../test/importWorkbook.ts';
 import { createTestApp } from '../../test/testApp.ts';
+import { rewritePart, withEmptyEntries } from '../../test/zipArchive.ts';
 import { ALLOWED_VALUES_SHEET } from './templateColumns.ts';
 import { MAX_IMPORT_BYTES } from './workbookReader.ts';
 
@@ -412,6 +413,139 @@ describe('POST /api/imports/preview', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVALID_FILE');
+  });
+});
+
+const FIRST_SHEET_PART = 'xl/worksheets/sheet1.xml';
+
+function nestedElements(depth: number): string {
+  return '<x>'.repeat(depth) + '</x>'.repeat(depth);
+}
+
+/** A workbook of one data row, row 2, whose first sheet's XML has been rewritten. */
+async function withSheetXml(rewrite: (xml: string) => string): Promise<Buffer> {
+  return rewritePart(await buildImportFile([anImportRow()]), FIRST_SHEET_PART, rewrite);
+}
+
+async function expectInvalidFile(app: Express, content: Buffer): Promise<void> {
+  const response = await postPreview(app, content);
+
+  expect(response.status).toBe(400);
+  expect(response.body.error).toEqual({
+    code: 'INVALID_FILE',
+    message: 'The file could not be read as an Excel workbook',
+  });
+}
+
+describe('POST /api/imports/preview: hostile and unusual workbook XML', () => {
+  it.each([
+    [
+      'the sheet',
+      FIRST_SHEET_PART,
+      (xml: string) => xml.replace('<sheetData>', `${nestedElements(65)}<sheetData>`),
+    ],
+    [
+      'the workbook part',
+      'xl/workbook.xml',
+      (xml: string) => xml.replace('</workbook>', `${nestedElements(65)}</workbook>`),
+    ],
+    [
+      'the shared strings',
+      'xl/sharedStrings.xml',
+      (xml: string) => xml.replace('<si>', `<si>${nestedElements(65)}`),
+    ],
+  ])(
+    'rejects elements nested more than 64 deep in %s with 400',
+    async (_part, partName, rewrite) => {
+      const { app } = createTestApp();
+
+      await expectInvalidFile(
+        app,
+        await rewritePart(await buildImportFile([anImportRow()]), partName, rewrite),
+      );
+    },
+  );
+
+  it('rejects an element with more than 64 attributes with 400', async () => {
+    const { app } = createTestApp();
+    const attributes = Array.from({ length: 65 }, (_, index) => ` a${index}="1"`).join('');
+
+    await expectInvalidFile(
+      app,
+      await withSheetXml((xml) => xml.replace('<row r="2"', `<row r="2"${attributes}`)),
+    );
+  });
+
+  it('rejects entities that expand into ever more text (billion laughs) with 400', async () => {
+    const { app } = createTestApp();
+    const laughs =
+      '<!DOCTYPE worksheet [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">' +
+      '<!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">]>';
+    const content = await withSheetXml((xml) =>
+      xml
+        .replace('?>', `?>${laughs}`)
+        .replace(
+          '</row></sheetData>',
+          '<c r="J2" t="inlineStr"><is><t>&lol3;</t></is></c></row></sheetData>',
+        ),
+    );
+
+    await expectInvalidFile(app, content);
+  });
+
+  it('rejects more than 250,000 shared strings with 400', async () => {
+    const { app } = createTestApp();
+    const content = await rewritePart(
+      await buildImportFile([anImportRow()]),
+      'xl/sharedStrings.xml',
+      (xml) => xml.replace('</sst>', `${'<si/>'.repeat(250_001)}</sst>`),
+    );
+
+    await expectInvalidFile(app, content);
+  });
+
+  it('rejects an archive of more than 1,000 entries with 400 and says why', async () => {
+    const { app } = createTestApp();
+    const content = await withEmptyEntries(await buildImportFile([anImportRow()]), 1_000);
+
+    const response = await postPreview(app, content);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toEqual({
+      code: 'INVALID_FILE',
+      message: 'The file has too many parts to be an Excel workbook (over 1,000)',
+    });
+  });
+
+  it('numbers a row written without a row number as the one after the row before it', async () => {
+    const { app } = createTestApp();
+    const content = await rewritePart(
+      await buildImportFile([anImportRow(), anImportRow({ email: 'bela@acme.example' })]),
+      FIRST_SHEET_PART,
+      (xml) => xml.replace('<row r="3"', '<row'),
+    );
+
+    const response = await postPreview(app, content);
+
+    expect(response.status).toBe(200);
+    expect((response.body as ImportPreview).creates.map(({ row, email }) => [row, email])).toEqual([
+      [2, 'asha.rao@acme.example'],
+      [3, 'bela@acme.example'],
+    ]);
+  });
+
+  it.each([
+    ['repeats the row before it', '<row r="2"'],
+    ['comes before the row before it', '<row r="1"'],
+  ])('rejects a row whose number %s with 400', async (_case, rowStart) => {
+    const { app } = createTestApp();
+    const content = await rewritePart(
+      await buildImportFile([anImportRow(), anImportRow({ email: 'bela@acme.example' })]),
+      FIRST_SHEET_PART,
+      (xml) => xml.replace('<row r="3"', rowStart),
+    );
+
+    await expectInvalidFile(app, content);
   });
 });
 

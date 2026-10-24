@@ -1,7 +1,13 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { anImportRow, buildImportFile, TEMPLATE_HEADERS } from '../../test/importWorkbook.ts';
-import { readPart, rewritePart, withDeclaredUncompressedSizes } from '../../test/zipArchive.ts';
+import {
+  entryCountOf,
+  readPart,
+  rewritePart,
+  withDeclaredUncompressedSizes,
+  withEmptyEntries,
+} from '../../test/zipArchive.ts';
 import { ImportFileError } from '../shared/errors.ts';
 import {
   type RawImportRow,
@@ -256,6 +262,76 @@ describe('readImportFile: the data rows', () => {
     const rows = await readImportFile(otherTabFirst, FILE_NAME);
 
     expect(rows.map((row) => row.cells[0])).toEqual(['Bela Roy']);
+  });
+});
+
+describe('readImportFile: row numbers and the bounds of what a sheet holds', () => {
+  async function twoRowFile(rewrite: (xml: string) => string): Promise<Buffer> {
+    const content = await buildImportFile([anImportRow(), anImportRow({ fullName: 'Bela Roy' })]);
+    return rewritePart(content, FIRST_SHEET_PART, rewrite);
+  }
+
+  it('numbers rows written without a row number one after the row before, starting at the header', async () => {
+    const content = await twoRowFile((xml) => xml.replace(/<row r="\d+"/g, '<row'));
+
+    const rows = await readImportFile(content, FILE_NAME);
+
+    expect(rows.map((row) => [row.rowNumber, row.cells[0]])).toEqual([
+      [2, 'Asha Rao'],
+      [3, 'Bela Roy'],
+    ]);
+  });
+
+  it('numbers a row without a row number after a numbered row that skipped ahead', async () => {
+    const content = await twoRowFile((xml) =>
+      xml.replace('<row r="2"', '<row r="5"').replace('<row r="3"', '<row'),
+    );
+
+    const rows = await readImportFile(content, FILE_NAME);
+
+    expect(rows.map((row) => row.rowNumber)).toEqual([5, 6]);
+  });
+
+  it.each([
+    ['is not a number', 'x'],
+    ['is zero', '0'],
+  ])('rejects a row whose row number %s', async (_case, rowNumber) => {
+    const content = await twoRowFile((xml) => xml.replace('<row r="3"', `<row r="${rowNumber}"`));
+
+    await expectRejection(readImportFile(content, FILE_NAME), 'INVALID_FILE');
+  });
+
+  it('rejects a row whose cells without references run past the last column, XFD', async () => {
+    const content = await twoRowFile((xml) =>
+      xml.replace('</c></row><row r="3"', `</c>${'<c s="1"/>'.repeat(16_384)}</row><row r="3"`),
+    );
+
+    await expectRejection(readImportFile(content, FILE_NAME), 'INVALID_FILE');
+  });
+
+  it('accepts cells without references that end exactly at the last column, XFD', async () => {
+    const content = await twoRowFile((xml) =>
+      xml.replace('</c></row><row r="3"', `</c>${'<c s="1"/>'.repeat(16_384 - 9)}</row><row r="3"`),
+    );
+
+    await expect(readImportFile(content, FILE_NAME)).resolves.toHaveLength(2);
+  });
+
+  it('accepts a shared-strings table of exactly 250,000 entries', async () => {
+    const content = await buildImportFile([anImportRow()]);
+    const entryCount = sharedStringEntries(await readPart(content, SHARED_STRINGS_PART)).length;
+    const atTheLimit = await rewritePart(content, SHARED_STRINGS_PART, (xml) =>
+      xml.replace('</sst>', `${'<si/>'.repeat(250_000 - entryCount)}</sst>`),
+    );
+
+    await expect(readImportFile(atTheLimit, FILE_NAME)).resolves.toHaveLength(1);
+  });
+
+  it('accepts a workbook of exactly 1,000 entries', async () => {
+    const content = await buildImportFile([anImportRow()]);
+    const atTheLimit = await withEmptyEntries(content, 1_000 - (await entryCountOf(content)));
+
+    await expect(readImportFile(atTheLimit, FILE_NAME)).resolves.toHaveLength(1);
   });
 });
 
