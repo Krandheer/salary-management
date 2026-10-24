@@ -3,13 +3,19 @@ import { ApiError } from '@/api/http';
 
 const EMAIL_TAKEN = 'EMAIL_TAKEN';
 
-/** The edit request names the new salary `salaryChange.amount`; the form calls that field `annualSalary`. */
+const SALARY_CHANGE_PREFIX = 'salaryChange.';
+
+/** The edit request nests the salary change; the form calls the new salary `annualSalary` and the rest by their own names. */
+function toFormFieldName(requestField: string): string {
+  if (requestField === 'salaryChange.amount') return 'annualSalary';
+  return requestField.startsWith(SALARY_CHANGE_PREFIX)
+    ? requestField.slice(SALARY_CHANGE_PREFIX.length)
+    : requestField;
+}
+
 function toFormFieldNames(fieldErrors: FieldErrors): FieldErrors {
   return Object.fromEntries(
-    Object.entries(fieldErrors).map(([name, message]) => [
-      name === 'salaryChange.amount' ? 'annualSalary' : name,
-      message,
-    ]),
+    Object.entries(fieldErrors).map(([name, message]) => [toFormFieldName(name), message]),
   );
 }
 

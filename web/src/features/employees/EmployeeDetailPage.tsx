@@ -5,16 +5,9 @@ import { useEmployee } from '@/api/employees';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { formatDate, formatSalary } from '@/shared/format';
 import { ErrorState, LoadingState } from '@/shared/StateViews';
+import { SalaryHistoryTable } from './SalaryHistoryTable';
 
 function StatusBadge({ status }: { status: EmployeeDetail['status'] }) {
   const isActive = status === 'active';
@@ -36,31 +29,6 @@ function DetailRow({ term, children }: { term: string; children: string }) {
       <dt className="text-xs font-semibold text-muted-foreground">{term}</dt>
       <dd>{children}</dd>
     </div>
-  );
-}
-
-function SalaryHistoryTable({ history }: { history: EmployeeDetail['salaryHistory'] }) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="px-3">Effective date</TableHead>
-          <TableHead className="px-3 text-right">Salary</TableHead>
-          <TableHead className="px-3">Reason</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {history.map((entry) => (
-          <TableRow key={entry.id}>
-            <TableCell className="px-3 py-2">{formatDate(entry.effectiveDate)}</TableCell>
-            <TableCell className="px-3 py-2 text-right tabular-nums">
-              {formatSalary(entry.amount, entry.currency)}
-            </TableCell>
-            <TableCell className="px-3 py-2">{entry.reason ?? ''}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
   );
 }
 
@@ -94,7 +62,7 @@ function EmployeeDetails({ employee }: { employee: EmployeeDetail }) {
         </DetailRow>
       </dl>
       <h2 className="text-xl font-semibold">Salary history</h2>
-      <SalaryHistoryTable history={employee.salaryHistory} />
+      <SalaryHistoryTable entries={employee.salaryHistory} />
     </>
   );
 }

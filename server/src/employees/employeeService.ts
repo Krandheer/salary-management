@@ -9,7 +9,12 @@ import {
 } from '../shared/errors.ts';
 import type { EmployeeFilters, EmployeeListQuery } from './employeeListQuery.ts';
 import type { EditableState, EmployeeRepository } from './employeeRepository.ts';
-import { validateEmployeeFields, validateEmployeeUpdate } from './employeeValidation.ts';
+import {
+  validateEmployeeFields,
+  validateEmployeeUpdate,
+  type EmployeeFields,
+  type ValidSalaryChange,
+} from './employeeValidation.ts';
 import { compareTitles, pickDisplayTitle } from './jobTitles.ts';
 
 function groupSpellingsByKey(
@@ -20,6 +25,15 @@ function groupSpellingsByKey(
     spellingsByKey.set(jobTitleKey, [...(spellingsByKey.get(jobTitleKey) ?? []), jobTitle]);
   }
   return spellingsByKey;
+}
+
+/** Re-saving the same amount in the same country is not a change, so it leaves no history entry. */
+function isNewHistoryEntryNeeded(
+  stored: EmployeeFields,
+  updated: EmployeeFields,
+  change: ValidSalaryChange,
+): boolean {
+  return change.amount !== stored.annualSalary || updated.countryCode !== stored.countryCode;
 }
 
 export class EmployeeService {
@@ -71,7 +85,7 @@ export class EmployeeService {
       throw new EmailTakenError();
     }
     this.repository.updateEmployeeFields(id, fields);
-    if (salaryChange) {
+    if (salaryChange && isNewHistoryEntryNeeded(state.fields, fields, salaryChange)) {
       const entry = { ...salaryChange, currency: currencyFor(fields.countryCode) };
       this.repository.insertSalaryEntry(id, entry, this.clock.now());
     }

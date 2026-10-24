@@ -1,7 +1,7 @@
 import type { CountryCode, FieldErrors, IsoDate } from '@acme/contracts';
 import { isIsoDate } from '../shared/dates.ts';
 import { DEPARTMENTS, EMPLOYMENT_TYPES, findCountry } from '../reference/referenceData.ts';
-import { normalizeKey } from '../shared/text.ts';
+import { normalizeKey, trimToNull } from '../shared/text.ts';
 
 /** The earliest hire date the app accepts. */
 export const EARLIEST_HIRE_DATE: IsoDate = '1950-01-01';
@@ -21,18 +21,23 @@ export interface EmployeeFields {
 export type EmployeeValidation =
   { ok: true; fields: EmployeeFields } | { ok: false; fieldErrors: FieldErrors };
 
-/** A salary change that passed validation; Slice 5 lets the user choose the date and reason. */
+/** A salary change that passed validation, ready to be recorded as a history entry. */
 export interface ValidSalaryChange {
   amount: number;
   effectiveDate: IsoDate;
   reason: string | null;
 }
 
+export type SalaryChangeValidation =
+  { ok: true; change: ValidSalaryChange } | { ok: false; fieldErrors: FieldErrors };
+
 export type EmployeeUpdateValidation =
   | { ok: true; fields: EmployeeFields; salaryChange: ValidSalaryChange | null }
   | { ok: false; fieldErrors: FieldErrors };
 
 const SALARY_CHANGE_AMOUNT = 'salaryChange.amount';
+const SALARY_CHANGE_DATE = 'salaryChange.effectiveDate';
+const SALARY_CHANGE_REASON = 'salaryChange.reason';
 const EDITABLE_FIELDS = [
   'fullName',
   'email',
@@ -128,6 +133,12 @@ export function validateAnnualSalary(value: unknown, countryCode: unknown): stri
   return null;
 }
 
+function dropNullMessages(errorsByField: Record<string, string | null>): FieldErrors {
+  return Object.fromEntries(
+    Object.entries(errorsByField).filter((entry): entry is [string, string] => entry[1] !== null),
+  );
+}
+
 function collectFieldErrors(input: Record<string, unknown>, today: IsoDate): FieldErrors {
   const errorsByField: Record<string, string | null> = {
     fullName: validateFullName(input.fullName),
@@ -139,9 +150,7 @@ function collectFieldErrors(input: Record<string, unknown>, today: IsoDate): Fie
     employmentType: validateEmploymentType(input.employmentType),
     hireDate: validateHireDate(input.hireDate, today),
   };
-  return Object.fromEntries(
-    Object.entries(errorsByField).filter((entry): entry is [string, string] => entry[1] !== null),
-  );
+  return dropNullMessages(errorsByField);
 }
 
 function normaliseFields(input: Record<string, unknown>): EmployeeFields {
@@ -178,27 +187,49 @@ function pickEditableFields(patch: Record<string, unknown>): Record<string, unkn
   );
 }
 
-/** The amount typed for a salary change; `given` is false when the patch holds no salary change. */
-function readSalaryProposal(patch: Record<string, unknown>): { given: boolean; amount: unknown } {
-  const change = patch.salaryChange;
-  if (change === undefined || change === null) return { given: false, amount: undefined };
-  const amount =
-    typeof change === 'object' ? (change as Record<string, unknown>).amount : undefined;
-  return { given: true, amount };
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function validateEffectiveDate(
+  date: unknown,
+  context: { today: IsoDate; hireDate: IsoDate },
+): string | null {
+  if (!isIsoDate(date)) return 'Effective date must be a valid date';
+  if (date > context.today) return 'Effective date cannot be in the future';
+  if (date < context.hireDate) return 'Effective date cannot be before the hire date';
+  return null;
+}
+
+function validateReason(reason: unknown): string | null {
+  const isText = reason === undefined || reason === null || typeof reason === 'string';
+  return isText ? null : 'Reason must be text';
 }
 
 /**
- * The shared rules judge the salary as `annualSalary`. An edit reports it as the salary change,
- * and ignores the stored salary when the user is not changing it.
+ * Checks a salary change: the amount like any salary, an effective date that defaults to
+ * today and sits between the hire date and today, and an optional reason (blank means none).
  */
-function relabelSalaryError(
-  sharedErrors: FieldErrors,
-  isSalaryProposed: boolean,
-  isNewSalaryRequired: boolean,
-): FieldErrors {
-  const { annualSalary, ...others } = sharedErrors;
-  if (isSalaryProposed && annualSalary) return { ...others, [SALARY_CHANGE_AMOUNT]: annualSalary };
-  return isNewSalaryRequired ? others : sharedErrors;
+export function validateSalaryChange(
+  input: unknown,
+  context: { today: IsoDate; hireDate: IsoDate; countryCode: string },
+): SalaryChangeValidation {
+  const proposal = asRecord(input);
+  const effectiveDate = isBlank(proposal.effectiveDate) ? context.today : proposal.effectiveDate;
+  const fieldErrors = dropNullMessages({
+    [SALARY_CHANGE_AMOUNT]: validateAnnualSalary(proposal.amount, context.countryCode),
+    [SALARY_CHANGE_DATE]: validateEffectiveDate(effectiveDate, context),
+    [SALARY_CHANGE_REASON]: validateReason(proposal.reason),
+  });
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  return {
+    ok: true,
+    change: {
+      amount: toWholeNumber(proposal.amount) as number,
+      effectiveDate: effectiveDate as IsoDate,
+      reason: trimToNull(proposal.reason as string | null | undefined),
+    },
+  };
 }
 
 function collectEditOnlyErrors(
@@ -227,38 +258,49 @@ function collectEditOnlyErrors(
   return errors;
 }
 
+/** The stored salary is not re-judged on an edit, so its error (if any) is not reported. */
+function withoutStoredSalaryError(fieldErrors: FieldErrors): FieldErrors {
+  return Object.fromEntries(
+    Object.entries(fieldErrors).filter(([name]) => name !== 'annualSalary'),
+  );
+}
+
 /**
  * Merges the patch onto the stored employee and re-applies the shared field rules, plus the
  * edit-only rules: a country change needs a new salary, and the hire date cannot move past
- * the earliest salary history entry.
+ * the earliest salary history entry. The salary change is judged by `validateSalaryChange`
+ * against the hire date and country being saved; the stored salary is never re-judged.
  */
 export function validateEmployeeUpdate(
   current: EmployeeFields,
   patch: Record<string, unknown>,
   context: { today: IsoDate; earliestSalaryDate: IsoDate },
 ): EmployeeUpdateValidation {
-  const proposal = readSalaryProposal(patch);
-  const merged = {
-    ...currentAsInput(current),
-    ...pickEditableFields(patch),
-    ...(proposal.given ? { annualSalary: proposal.amount } : {}),
-  };
-  const validation = validateEmployeeFields(merged, { today: context.today });
-  const sharedErrors = validation.ok ? {} : validation.fieldErrors;
-  const editOnlyErrors = collectEditOnlyErrors(
-    current,
-    merged,
-    sharedErrors,
-    proposal.given,
-    context,
+  const merged = { ...currentAsInput(current), ...pickEditableFields(patch) };
+  const isSalaryProposed = patch.salaryChange !== undefined && patch.salaryChange !== null;
+  const salaryChange = isSalaryProposed
+    ? validateSalaryChange(patch.salaryChange, {
+        today: context.today,
+        hireDate: isIsoDate(merged.hireDate) ? merged.hireDate : current.hireDate,
+        countryCode: asTrimmedText(merged.country),
+      })
+    : null;
+  const newAmount = salaryChange?.ok ? salaryChange.change.amount : current.annualSalary;
+  const validation = validateEmployeeFields(
+    { ...merged, annualSalary: newAmount },
+    { today: context.today },
   );
-  const isNewSalaryRequired = SALARY_CHANGE_AMOUNT in editOnlyErrors;
-  const salaryErrors = relabelSalaryError(sharedErrors, proposal.given, isNewSalaryRequired);
-  const fieldErrors = { ...salaryErrors, ...editOnlyErrors };
+  const fieldRuleErrors = validation.ok ? {} : withoutStoredSalaryError(validation.fieldErrors);
+  const fieldErrors = {
+    ...fieldRuleErrors,
+    ...(salaryChange?.ok === false ? salaryChange.fieldErrors : {}),
+    ...collectEditOnlyErrors(current, merged, fieldRuleErrors, isSalaryProposed, context),
+  };
 
   if (!validation.ok || Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
-  const salaryChange = proposal.given
-    ? { amount: validation.fields.annualSalary, effectiveDate: context.today, reason: null }
-    : null;
-  return { ok: true, fields: validation.fields, salaryChange };
+  return {
+    ok: true,
+    fields: validation.fields,
+    salaryChange: salaryChange?.ok ? salaryChange.change : null,
+  };
 }

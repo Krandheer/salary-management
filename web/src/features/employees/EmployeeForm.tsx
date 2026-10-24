@@ -6,6 +6,7 @@ import type { FieldErrors, ReferenceData } from '@acme/contracts';
 import { Button } from '@/components/ui/button';
 import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -85,6 +86,7 @@ export function EmployeeForm({
   const isEdit = mode === 'edit';
   const messageFor = (name: FieldName) => formState.errors[name]?.message;
   const chosenCountry = useWatch({ control, name: 'country' });
+  const chosenHireDate = useWatch({ control, name: 'hireDate' });
   const currency = reference.countries.find((country) => country.code === chosenCountry)?.currency;
 
   useEffect(() => {
@@ -178,9 +180,19 @@ export function EmployeeForm({
           )}
         </FormField>
         {isEdit && (
-          <p className="text-sm text-muted-foreground">
-            Leave empty to keep the current salary. Required when the country changes.
-          </p>
+          <>
+            <p className="text-sm text-muted-foreground">
+              Leave empty to keep the current salary. Required when the country changes.
+            </p>
+            {textField('effectiveDate', 'Effective date', {
+              type: 'date',
+              min: chosenHireDate,
+              max: reference.today,
+            })}
+            <FormField name="reason" label="Reason" isRequired={false} error={messageFor('reason')}>
+              {(aria) => <Textarea {...aria} {...register('reason')} />}
+            </FormField>
+          </>
         )}
       </FieldSet>
       <div className="flex gap-3">

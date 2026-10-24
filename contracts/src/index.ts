@@ -128,5 +128,11 @@ export interface UpdateEmployeeRequest {
   country?: string;
   employmentType?: string;
   hireDate?: string;
-  salaryChange?: { amount: string | number };
+  salaryChange?: {
+    amount: string | number;
+    /** Defaults to today; cannot be in the future or before the hire date. */
+    effectiveDate?: string;
+    /** Optional free text; blank means no reason. */
+    reason?: string;
+  };
 }

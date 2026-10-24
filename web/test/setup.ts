@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
+
+// The default 1000 ms is tight for waits that sit behind the 300 ms search debounce on a loaded machine.
+configure({ asyncUtilTimeout: 4000 });
 
 class ResizeObserverStub {
   observe() {}

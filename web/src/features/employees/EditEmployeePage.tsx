@@ -21,7 +21,7 @@ function EditForm({ employee, reference }: EditFormProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverErrors, setServerErrors] = useState<FieldErrors>();
-  const [initialValues] = useState(() => toEditFormValues(employee));
+  const [initialValues] = useState(() => toEditFormValues(employee, reference.today));
   const update = useMutation({
     mutationFn: (values: EmployeeFormValues) =>
       updateEmployee(employee.id, toUpdateRequest(values, initialValues)),

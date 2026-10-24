@@ -123,16 +123,16 @@ Seeded database, then the API, then a paginated list in the UI.
 
 ## Slice 5: Salary history
 
--   [ ] The employee's page lists every salary history entry with amount, currency, effective date and reason, newest effective date first.
--   [ ] When two entries share an effective date, the one recorded later is listed first and is the current salary.
--   [ ] Saving a salary change adds a new history entry and keeps every earlier entry unchanged.
--   [ ] The salary change form has an effective date that defaults to today and can be set to an earlier date.
--   [ ] HR Manager can add an optional reason to a salary change.
--   [ ] A backdated change with an effective date before the current entry's is added to history but does not change the current salary.
--   [ ] Shows an error when the effective date is in the future.
--   [ ] Shows an error when the effective date is before the employee's hire date.
--   [ ] Saving an edit that leaves the salary amount and the country unchanged does not add a history entry.
--   [ ] After a country change, the new history entry is in the new country's currency, and earlier entries keep their original currency.
+-   [x] The employee's page lists every salary history entry with amount, currency, effective date and reason, newest effective date first.
+-   [x] When two entries share an effective date, the one recorded later is listed first and is the current salary.
+-   [x] Saving a salary change adds a new history entry and keeps every earlier entry unchanged.
+-   [x] The salary change form has an effective date that defaults to today and can be set to an earlier date.
+-   [x] HR Manager can add an optional reason to a salary change.
+-   [x] A backdated change with an effective date before the current entry's is added to history but does not change the current salary.
+-   [x] Shows an error when the effective date is in the future.
+-   [x] Shows an error when the effective date is before the employee's hire date.
+-   [x] Saving an edit that leaves the salary amount and the country unchanged does not add a history entry.
+-   [x] After a country change, the new history entry is in the new country's currency, and earlier entries keep their original currency.
 
 ## Slice 6: Delete (soft delete) & rehire an employee
 
