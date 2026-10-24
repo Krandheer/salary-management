@@ -40,7 +40,7 @@ describe('GET /api/insights/countries', () => {
         headcount: 4,
         min: 1_000_000,
         max: 3_000_000,
-        mean: 2_000_001,
+        mean: 2_000_000,
         median: 2_000_001,
       },
       {

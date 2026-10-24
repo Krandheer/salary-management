@@ -60,6 +60,16 @@ export function buildFilterConditions(filters: EmployeeFilters): SQL | undefined
   );
 }
 
+/** One active employee's current salary, the shared input of every insight. */
+export interface ActiveSalaryRow {
+  countryCode: CountryCode;
+  department: string;
+  jobTitle: string;
+  jobTitleKey: string;
+  amount: number;
+  currency: CurrencyCode;
+}
+
 /** What an edit starts from: the stored fields and the facts the edit rules need. */
 export interface EditableState {
   fields: EmployeeFields;
@@ -124,6 +134,23 @@ export class EmployeeRepository {
       .from(employees)
       .where(buildFilterConditions({ ...filters, jobTitleKey: null }))
       .all();
+  }
+
+  /** The current salary of every active employee, in one query. */
+  listActiveCurrentSalaries(): ActiveSalaryRow[] {
+    return this.db
+      .select({
+        countryCode: employees.countryCode,
+        department: employees.department,
+        jobTitle: employees.jobTitle,
+        jobTitleKey: employees.jobTitleKey,
+        amount: currentSalaries.amount,
+        currency: currentSalaries.currency,
+      })
+      .from(employees)
+      .innerJoin(currentSalaries, eq(currentSalaries.employeeId, employees.id))
+      .where(eq(employees.status, 'active'))
+      .all() as ActiveSalaryRow[];
   }
 
   /** The id of the active employee with this email (already lower-cased), if any. */

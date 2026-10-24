@@ -170,15 +170,15 @@ Deleting never erases data. It sets the employee's status to **inactive**, with 
 
 ## Slice 7: Country pay insights
 
--   [ ] Insights page lists each country with its headcount, ordered by country name A to Z.
--   [ ] For each country, shows the minimum, maximum, mean and median current annual salary in that country's currency.
--   [ ] Mean and median are rounded to the nearest whole currency unit, with halves rounded up.
--   [ ] For an even headcount, the median is the average of the two middle salaries.
--   [ ] Figures change as soon as an employee is added, has their salary or country changed, or is deleted.
--   [ ] Inactive employees are not counted in any figure.
--   [ ] Countries with no active employees are not listed.
--   [ ] Shows a "No employees yet" message when there are no active employees.
--   [ ] With 10,000 employees loaded, the country insights appear within 1 second.
+-   [x] Insights page lists each country with its headcount, ordered by country name A to Z.
+-   [x] For each country, shows the minimum, maximum, mean and median current annual salary in that country's currency.
+-   [x] Mean and median are rounded to the nearest whole currency unit, with halves rounded up.
+-   [x] For an even headcount, the median is the average of the two middle salaries.
+-   [x] Figures change as soon as an employee is added, has their salary or country changed, or is deleted.
+-   [x] Inactive employees are not counted in any figure.
+-   [x] Countries with no active employees are not listed.
+-   [x] Shows a "No employees yet" message when there are no active employees.
+-   [x] With 10,000 employees loaded, the country insights appear within 1 second.
 
 ## Slice 8: Job-title insights within a country
 

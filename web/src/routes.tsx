@@ -4,6 +4,7 @@ import { AddEmployeePage } from './features/employees/AddEmployeePage';
 import { EditEmployeePage } from './features/employees/EditEmployeePage';
 import { EmployeeDetailPage } from './features/employees/EmployeeDetailPage';
 import { EmployeeListPage } from './features/employees/EmployeeListPage';
+import { InsightsPage } from './features/insights/InsightsPage';
 
 function ComingSoonPage({ title }: { title: string }) {
   return (
@@ -23,7 +24,7 @@ export const appRoutes: RouteObject[] = [
       { path: '/employees/new', element: <AddEmployeePage /> },
       { path: '/employees/:id', element: <EmployeeDetailPage /> },
       { path: '/employees/:id/edit', element: <EditEmployeePage /> },
-      { path: '/insights', element: <ComingSoonPage title="Insights" /> },
+      { path: '/insights', element: <InsightsPage /> },
       { path: '/import-export', element: <ComingSoonPage title="Import / Export" /> },
     ],
   },

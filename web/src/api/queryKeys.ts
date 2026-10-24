@@ -7,6 +7,9 @@ export const queryKeys = {
     detail: (id: number) => ['employees', 'detail', id] as const,
     jobTitles: (params: JobTitleOptionsParams) => ['employees', 'jobTitles', params] as const,
   },
-  insights: { all: ['insights'] as const },
+  insights: {
+    all: ['insights'] as const,
+    countries: ['insights', 'countries'] as const,
+  },
   reference: ['reference'] as const,
 };

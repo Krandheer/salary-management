@@ -143,3 +143,25 @@ export interface UpdateEmployeeRequest {
     reason?: string;
   };
 }
+
+/** Current annual salary figures for a group of active employees, in one currency. */
+export interface SalaryStats {
+  headcount: number;
+  min: number;
+  max: number;
+  /** Rounded to a whole currency unit, halves up. */
+  mean: number;
+  /** Rounded to a whole currency unit, halves up. */
+  median: number;
+}
+
+export interface CountryInsight extends SalaryStats {
+  country: CountryCode;
+  countryName: string;
+  currency: CurrencyCode;
+}
+
+/** Only countries with active employees, ordered by country name A to Z. */
+export interface CountryInsights {
+  countries: CountryInsight[];
+}
