@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createTestDb } from '../../test/testApp.ts';
 import { generateSeedEmployees } from './generateEmployees.ts';
-import { replaceAllEmployees } from './seedDatabase.ts';
+import { replaceAllEmployees, seedIfEmpty } from './seedDatabase.ts';
+import { SEED_EMPLOYEE_COUNT } from './seedCatalogue.ts';
+import { fixedClock } from '../shared/clock.ts';
+import { insertEmployee } from '../../test/builders.ts';
 import type { AppDatabase } from '../db/database.ts';
 
 const SEED_OPTIONS = { count: 600, randomSeed: 7, today: '2026-10-24' };
@@ -58,5 +61,26 @@ describe('replaceAllEmployees', () => {
     replaceAllEmployees(db, generateSeedEmployees({ ...SEED_OPTIONS, count: 40 }), RECORDED_AT);
 
     expect(countRows(db, 'employees')).toBe(40);
+  });
+});
+
+describe('seedIfEmpty', () => {
+  it('seeds the full demo data set into an empty database and reports it', () => {
+    const db = createTestDb();
+
+    const didSeed = seedIfEmpty(db, fixedClock('2026-10-24'));
+
+    expect(didSeed).toBe(true);
+    expect(countRows(db, 'employees')).toBe(SEED_EMPLOYEE_COUNT);
+  });
+
+  it('leaves existing data untouched and reports nothing seeded', () => {
+    const db = createTestDb();
+    insertEmployee(db, { fullName: 'Existing Person' });
+
+    const didSeed = seedIfEmpty(db, fixedClock('2026-10-24'));
+
+    expect(didSeed).toBe(false);
+    expect(countRows(db, 'employees')).toBe(1);
   });
 });
