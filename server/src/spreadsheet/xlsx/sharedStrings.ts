@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs';
 import type JSZip from 'jszip';
-import { MalformedXlsxError, type SharedString } from './cellValues.ts';
+import type { SharedString } from './cellValues.ts';
+import { MalformedXlsxError } from './malformedXlsxError.ts';
 import { parseXmlEntry, type XmlTag } from './xmlEntry.ts';
 
 /** exceljs's TextXform decodes `_xHHHH_` escapes in shared and rich text, never in inline `<t>`. */

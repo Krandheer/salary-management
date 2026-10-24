@@ -1,15 +1,11 @@
 import type ExcelJS from 'exceljs';
+import { MalformedXlsxError } from './malformedXlsxError.ts';
 
 /**
  * These rules mirror how exceljs 4.4.0's full workbook loader (`xlsx/xform/sheet/cell-xform.js`
  * and its reconcile step) turns a `<c>` element into a cell value, so a streamed read gives the
  * import exactly the values a full load gave it.
  */
-
-/** Thrown for XML that exceljs's full loader would also fail on; the reader reports it as unreadable. */
-export class MalformedXlsxError extends Error {
-  override readonly name = 'MalformedXlsxError';
-}
 
 /** One entry of the shared-strings table: plain text, rich-text runs, or nothing for an empty entry. */
 export type SharedString = string | ExcelJS.CellRichTextValue | null;

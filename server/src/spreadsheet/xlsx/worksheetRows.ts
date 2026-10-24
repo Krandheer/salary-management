@@ -5,8 +5,8 @@ import {
   type CellValueContext,
   type CellXml,
   isPlaceholderCell,
-  MalformedXlsxError,
 } from './cellValues.ts';
+import { MalformedXlsxError } from './malformedXlsxError.ts';
 import { RichTextRun } from './sharedStrings.ts';
 import { parseXmlEntry, type XmlTag } from './xmlEntry.ts';
 

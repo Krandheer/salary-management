@@ -1,5 +1,5 @@
 import type JSZip from 'jszip';
-import { MalformedXlsxError } from './cellValues.ts';
+import { MalformedXlsxError } from './malformedXlsxError.ts';
 import { parseXmlEntry } from './xmlEntry.ts';
 
 /**
