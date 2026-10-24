@@ -66,9 +66,9 @@ export const salaryHistory = sqliteTable(
 
 /** Created by the custom migration `current_salaries_view`; declared here only for typed queries. */
 export const currentSalaries = sqliteView('current_salaries', {
-  employeeId: integer('employee_id'),
-  amount: integer('amount'),
-  currency: text('currency'),
+  employeeId: integer('employee_id').notNull(),
+  amount: integer('amount').notNull(),
+  currency: text('currency').notNull(),
 }).existing();
 
 export type EmployeeRow = typeof employees.$inferSelect;

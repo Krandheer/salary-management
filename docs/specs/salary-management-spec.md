@@ -69,14 +69,14 @@ These apply everywhere an employee is created or changed: the add form, the edit
 
 Seeded database, then the API, then a paginated list in the UI.
 
--   [ ] Employee list shows each employee's full name, job title, department, country and current salary in the shared salary format.
--   [ ] Employee list shows 25 employees per page, the total number of employees, and "Page X of Y".
--   [ ] HR Manager can move to the next page and back to the previous page.
--   [ ] The "Previous" control is unavailable on the first page and the "Next" control is unavailable on the last page.
--   [ ] Employee list is sorted by full name A to Z, ignoring letter case, with ties ordered by employee ID.
--   [ ] Shows a "No employees yet" message when there are no employees.
--   [ ] Shows an error message with a retry option when the employee list fails to load.
--   [ ] With 10,000 employees loaded, the first page appears within 1 second.
+-   [x] Employee list shows each employee's full name, job title, department, country and current salary in the shared salary format.
+-   [x] Employee list shows 25 employees per page, the total number of employees, and "Page X of Y".
+-   [x] HR Manager can move to the next page and back to the previous page.
+-   [x] The "Previous" control is unavailable on the first page and the "Next" control is unavailable on the last page.
+-   [x] Employee list is sorted by full name A to Z, ignoring letter case, with ties ordered by employee ID.
+-   [x] Shows a "No employees yet" message when there are no employees.
+-   [x] Shows an error message with a retry option when the employee list fails to load.
+-   [x] With 10,000 employees loaded, the first page appears within 1 second.
 -   [x] The seed command creates 10,000 active employees, covering all 8 countries and all 10 departments.
 -   [x] Each seeded employee has 1 to 4 salary history entries. The first is effective on the hire date, and every entry is dated between the hire date and today.
 -   [x] Every seeded salary falls within the seed's configured range for that employee's country and job title.

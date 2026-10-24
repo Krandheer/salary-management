@@ -47,7 +47,9 @@ function serveTwoPages() {
   });
 }
 
-beforeEach(() => requestJsonMock.mockReset());
+beforeEach(() => {
+  requestJsonMock.mockReset();
+});
 
 describe('EmployeeListPage', () => {
   it('shows each employee with name, job title, department, country and formatted salary', async () => {
