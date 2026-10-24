@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeListPage as EmployeeListData, EmployeeSummary } from '@acme/contracts';
 import { renderWithProviders } from '../../../test/render';
 import { aReference } from '../../../test/fixtures';
+import { tabTo } from '../../../test/keyboard';
 import { ApiError, requestJson } from '@/api/http';
 import { EmployeeListPage } from './EmployeeListPage';
 
@@ -450,5 +451,51 @@ describe('EmployeeListPage export', () => {
         '/api/exports/employees?search=ash&status=inactive',
       ),
     );
+  });
+});
+
+describe('EmployeeListPage keyboard use', () => {
+  it('filters and pages through the list using only the keyboard', async () => {
+    const user = userEvent.setup();
+    serveTwoPages();
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+
+    await tabTo(user, screen.getByRole('textbox', { name: 'Search name' }));
+    await user.keyboard('zed');
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?search=zed&page=1'));
+
+    const country = screen.getByRole('combobox', { name: 'Country' });
+    await tabTo(user, country);
+    await user.keyboard('{Enter}');
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{Enter}');
+    expect(country).toHaveTextContent('Australia');
+    expect(country).toHaveFocus();
+    await waitFor(() =>
+      expect(listCalls().at(-1)).toBe('/api/employees?search=zed&country=AU&page=1'),
+    );
+
+    await tabTo(user, screen.getByRole('button', { name: 'Clear filters' }));
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('textbox', { name: 'Search name' })).toHaveValue('');
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?page=1'));
+
+    await tabTo(user, await screen.findByRole('button', { name: 'Next' }));
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText('Zed Young')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+  });
+
+  it('switches the inactive view on with the space bar', async () => {
+    const user = userEvent.setup();
+    serveApi(() => aPage());
+    renderWithProviders(<EmployeeListPage />);
+    await screen.findByText('Asha Rao');
+
+    await tabTo(user, screen.getByRole('switch', { name: 'Show inactive employees' }));
+    await user.keyboard(' ');
+
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/employees?status=inactive&page=1'));
   });
 });

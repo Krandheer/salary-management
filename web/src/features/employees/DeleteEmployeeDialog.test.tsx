@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDetail } from '@acme/contracts';
+import { tabTo } from '../../../test/keyboard';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
 import { DeleteEmployeeDialog } from './DeleteEmployeeDialog';
@@ -77,6 +78,37 @@ describe('DeleteEmployeeDialog', () => {
 
     const cancel = await screen.findByRole('button', { name: 'Cancel' });
     await waitFor(() => expect(cancel).toHaveFocus());
+  });
+
+  it('can be completed with the keyboard alone: Cancel has focus, Tab reaches Delete, Enter deletes', async () => {
+    requestJsonMock.mockResolvedValue({ ...employee, status: 'inactive', exitDate: '2026-10-24' });
+    const user = userEvent.setup();
+    const { onDeleted } = renderDialog();
+    const cancel = await screen.findByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(cancel).toHaveFocus());
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
+    expect(deleteCalls()).toEqual([['/api/employees/7?exitDate=2026-10-24', { method: 'DELETE' }]]);
+  });
+
+  it('can be dismissed with Escape, and the exit date is reachable by Shift+Tab, without deleting', async () => {
+    const user = userEvent.setup();
+    const { onOpenChange, onDeleted } = renderDialog();
+    const cancel = await screen.findByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(cancel).toHaveFocus());
+
+    await user.tab({ shift: true });
+    expect(screen.getByLabelText('Exit date')).toHaveFocus();
+    await tabTo(user, cancel);
+    await user.keyboard('{Escape}');
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(requestJsonMock).not.toHaveBeenCalled();
   });
 
   it('leaves the employee untouched when cancelled', async () => {

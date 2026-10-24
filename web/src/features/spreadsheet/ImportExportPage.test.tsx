@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ImportPreview, ImportResult } from '@acme/contracts';
+import { tabTo } from '../../../test/keyboard';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
 import { ImportExportPage } from './ImportExportPage';
@@ -177,6 +178,24 @@ describe('ImportExportPage: confirming an import', () => {
     expect(init?.method).toBe('POST');
     expect((init?.body as FormData).get('file')).toBe(file);
     expect(screen.queryByRole('button', { name: 'Confirm import' })).not.toBeInTheDocument();
+  });
+
+  it('previews and confirms an import using only the keyboard', async () => {
+    const user = userEvent.setup();
+    const result: ImportResult = { created: 1, updated: 0, unchanged: 4 };
+    serveImport(() => Promise.resolve(result));
+    renderWithProviders(<ImportExportPage />);
+    const fileInput = screen.getByLabelText('Excel file (.xlsx)');
+    await tabTo(user, fileInput);
+    await user.upload(fileInput, anXlsxFile());
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Preview import' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await tabTo(user, await screen.findByRole('button', { name: 'Confirm import' }));
+    await user.keyboard(' ');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 created, 0 updated, 4 left');
   });
 
   it('refreshes employee and insight data after the import is saved', async () => {

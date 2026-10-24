@@ -4,6 +4,8 @@ import { Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmailCheckResult, EmployeeDetail } from '@acme/contracts';
 import { aReference } from '../../../test/fixtures';
+import { tabTo } from '../../../test/keyboard';
+import { expectEveryControlLabelled } from '../../../test/labels';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
 import { AddEmployeePage } from './AddEmployeePage';
@@ -137,6 +139,39 @@ describe('AddEmployeePage', () => {
     expect(await screen.findByText(/employee added/i)).toBeInTheDocument();
   });
 
+  it('completes and saves the whole form using only the keyboard', async () => {
+    serveApi(() => aDetail());
+    const user = userEvent.setup();
+    renderAddPage();
+
+    await tabTo(user, await screen.findByLabelText(/full name/i));
+    await user.keyboard('Asha Rao');
+    await tabTo(user, screen.getByLabelText(/work email/i));
+    await user.keyboard('asha.rao@acme.example');
+    await tabTo(user, screen.getByLabelText(/job title/i));
+    await user.keyboard('Software Engineer');
+    await tabTo(user, screen.getByRole('combobox', { name: /department/i }));
+    await user.keyboard('{Enter}{ArrowDown}{Enter}');
+    await tabTo(user, screen.getByRole('combobox', { name: /country/i }));
+    await user.keyboard('{Enter}{ArrowDown}{Enter}');
+    await tabTo(user, screen.getByRole('combobox', { name: /employment type/i }));
+    await user.keyboard('{Enter}{ArrowDown}{Enter}');
+    await tabTo(user, screen.getByLabelText(/hire date/i));
+    await user.keyboard('2024-03-01');
+    await tabTo(user, screen.getByLabelText(/annual salary/i));
+    await user.keyboard('90000');
+    await tabTo(user, screen.getByRole('button', { name: 'Save' }));
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(postCalls()).toHaveLength(1));
+    const [, init] = postCalls()[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      fullName: 'Asha Rao',
+      annualSalary: '90000',
+      hireDate: '2024-03-01',
+    });
+  });
+
   it('shows the server field errors as text next to each field, with no client-side rules', async () => {
     serveApi(() => {
       throw new ApiError(400, 'VALIDATION_FAILED', 'Some fields are invalid', {
@@ -183,6 +218,15 @@ describe('AddEmployeePage', () => {
     }
     const pay = screen.getByRole('group', { name: 'Pay' });
     expect(within(pay).getByLabelText(/annual salary/i)).toBeInTheDocument();
+  });
+
+  it('gives every control of the add form a visible label', async () => {
+    serveApi(() => aDetail());
+    const { container } = renderAddPage();
+
+    await screen.findByLabelText(/full name/i);
+
+    expectEveryControlLabelled(container);
   });
 
   it('names the earlier inactive employee and says saving creates a new linked record once the email is left', async () => {

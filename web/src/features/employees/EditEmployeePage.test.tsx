@@ -4,6 +4,7 @@ import { Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDetail } from '@acme/contracts';
 import { aReference } from '../../../test/fixtures';
+import { expectEveryControlLabelled } from '../../../test/labels';
 import { renderWithProviders } from '../../../test/render';
 import { ApiError, requestJson } from '@/api/http';
 import { EditEmployeePage } from './EditEmployeePage';
@@ -87,6 +88,15 @@ describe('EditEmployeePage', () => {
     const pay = screen.getByRole('group', { name: 'Change salary' });
     expect(within(pay).getByLabelText(/new annual salary/i)).toHaveValue('');
     expect(within(pay).getByText('INR')).toBeInTheDocument();
+  });
+
+  it('gives every control of the edit form, including the salary change, a visible label', async () => {
+    serveApi();
+    const { container } = renderEditPage();
+
+    await screen.findByLabelText(/full name/i);
+
+    expectEveryControlLabelled(container);
   });
 
   it('shows the currency of the newly chosen country next to the new salary', async () => {
