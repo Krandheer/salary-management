@@ -91,7 +91,7 @@ sequenceDiagram
     Note over API,DB: Nothing is written
 
     alt preview has errors
-        UI-->>HR: Confirm disabled; fix the file and preview again
+        UI-->>HR: Confirm disabled, fix the file and preview again
     else no errors
         HR->>UI: Confirm import
         UI->>APPLY: same file, uploaded again
