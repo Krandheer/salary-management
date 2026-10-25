@@ -1,10 +1,16 @@
 # Render Blueprint: one Docker web service serving the API and the web app.
 # No secrets are needed; the app has no external credentials.
+#
+# Free plan: no persistent disk, so the SQLite file is ephemeral. The app re-seeds
+# 10,000 demo employees whenever it boots with an empty database (SEED_ON_EMPTY),
+# which happens after every deploy, restart or spin-down. Edits made in the demo
+# are lost at that point. For data that survives, switch to a paid plan and add:
+#   disk: { name: salary-data, mountPath: /data, sizeGB: 1 }
 services:
   - type: web
     name: acme-salary-management
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /api/health
     envVars:
       - key: SEED_ON_EMPTY
@@ -13,9 +19,3 @@ services:
         value: /data/salary.db
       - key: APP_TIMEZONE
         value: UTC
-    # The SQLite file lives on this disk, so data survives deploys.
-    # Remove the disk on the free plan: the database is then recreated and re-seeded on every restart.
-    disk:
-      name: salary-data
-      mountPath: /data
-      sizeGB: 1

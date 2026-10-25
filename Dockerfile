@@ -7,7 +7,7 @@ COPY package.json package-lock.json ./
 COPY contracts/package.json contracts/
 COPY server/package.json server/
 COPY web/package.json web/
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY tsconfig.base.json ./
 COPY contracts contracts
 COPY web web
@@ -20,7 +20,7 @@ COPY package.json package-lock.json ./
 COPY contracts/package.json contracts/
 COPY server/package.json server/
 COPY web/package.json web/
-RUN npm ci --omit=dev --workspace=server --include-workspace-root=false
+RUN npm ci --omit=dev --workspace=server --include-workspace-root=false --ignore-scripts
 
 # 3. Runtime: server source (run with tsx), contracts and the built web app.
 FROM node:24-slim AS runtime

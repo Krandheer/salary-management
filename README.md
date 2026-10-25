@@ -89,8 +89,13 @@ The repo ships a multi-stage `Dockerfile` (Node 24 slim) and a Render Blueprint,
 
 1. Push the repo to GitHub.
 2. In Render choose **New > Blueprint** and select the repo. Render reads `render.yaml`.
-3. The blueprint attaches a 1 GB disk at `/data` (the SQLite file is `/data/salary.db`), so data survives deploys. Disks need a paid plan. On a free instance remove the `disk` block: the database is then recreated and re-seeded on every restart, and edits are lost.
+3. The blueprint uses Render's **free** plan, which runs Docker web services but has no persistent disk:
+   - The SQLite file (`/data/salary.db`) lives on the container's ephemeral filesystem. Every deploy, restart or spin-down starts with an empty database, which the app re-seeds with the 10,000 demo employees on boot. Edits made in the demo don't survive that.
+   - A free service spins down after 15 minutes without traffic, and the next request takes about a minute while it starts and re-seeds. Open the URL a minute before a demo.
+   - For data that survives deploys, switch to a paid plan and add the 1 GB disk shown in the comment in `render.yaml`.
 4. The health check is `/api/health`. Nothing secret is configured.
+
+The image was verified locally with `docker run --memory=512m` (the free instance's RAM): about 213 MB after seeding, and about 245 MB after previewing a 10,000-row import.
 
 **Anywhere else (Railway, Fly.io, a VM):**
 
