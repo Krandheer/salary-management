@@ -331,3 +331,14 @@ The orchestrator then checked the successful rehire path directly against the AP
 | Spec acceptance criteria | all ticked |
 
 **Not done:** the Docker image has never been built, because the daemon wasn't running. The deploy itself is left to me.
+
+### 18. Fix the Docker build and deploy on Render's free plan
+
+I pasted the failing `docker build` output (the `npm ci --omit=dev ...` step exited with code 1) and asked whether Render would be free to deploy.
+
+**AI output:**
+
+-   **Found the real cause.** It reproduced the build with `--progress=plain` to see npm's actual error: npm ran an implicit `node-gyp rebuild` for better-sqlite3, and the slim image has no Python or compiler. This also showed that the earlier review's claim ("no install script, prebuilds are enough") was only half right. The prebuilds are bundled, but npm still tried to compile.
+-   **Fixed it.** Both `npm ci` steps now pass `--ignore-scripts`. Before relying on that, it checked that the package bundles Linux prebuilds and that the lockfile marks no install script for it.
+-   **Verified the image under the free tier's memory limit.** With `docker run --memory=512m` the container was healthy and seeded 10,000 employees on boot (about 213 MB). It served the UI and the API, and an export → import preview round trip through the container showed 10,000 unchanged rows at about 245 MB.
+-   **Switched `render.yaml` to `plan: free`.** It checked Render's free-tier docs: there's no persistent disk, a service spins down after 15 minutes idle, and cold starts take about a minute. So the free deploy re-seeds demo data on every boot, and the README explains this trade-off.
