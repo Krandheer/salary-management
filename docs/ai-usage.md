@@ -342,3 +342,36 @@ I pasted the failing `docker build` output (the `npm ci --omit=dev ...` step exi
 -   **Fixed it.** Both `npm ci` steps now pass `--ignore-scripts`. Before relying on that, it checked that the package bundles Linux prebuilds and that the lockfile marks no install script for it.
 -   **Verified the image under the free tier's memory limit.** With `docker run --memory=512m` the container was healthy and seeded 10,000 employees on boot (about 213 MB). It served the UI and the API, and an export → import preview round trip through the container showed 10,000 unchanged rows at about 245 MB.
 -   **Switched `render.yaml` to `plan: free`.** It checked Render's free-tier docs: there's no persistent disk, a service spins down after 15 minutes idle, and cold starts take about a minute. So the free deploy re-seeds demo data on every boot, and the README explains this trade-off.
+
+### 19. Deployed
+
+```
+deployed https://acme-salary-management-t0zm.onrender.com/employees
+```
+
+**My action:** I deployed the Render Blueprint on the free plan.
+
+**AI output:** it smoke-tested the live site.
+
+-   **Health and routing:** `/api/health` returned 200, `/employees` served the app, and unknown `/api` paths returned a JSON 404.
+-   **Data:** the API reported 10,000 seeded employees, and country insights took about 0.9 s.
+-   **Browser:** a Chrome check showed the list page rendering with country names and formatted salaries, and no console errors.
+-   **README:** it added the live URL, with a note about the free plan's cold starts and data resets.
+
+### 20. Edit and Delete were hard to find
+
+```
+how to delete employee I couldn't find them and how to edit as well, clicking on employee name should take me to employee page having these options
+```
+
+**AI output:** it confirmed a real gap. Edit, Change salary and Delete were only on the employee's page, and nothing in the list linked to that page.
+
+-   **Test first:** a red commit added list tests saying each name links to `/employees/:id` and can be reached with the keyboard.
+-   **Fix:** each name in the list is now a link to the employee's page.
+-   **Lesson:** the earlier browser check opened employee pages by typing their URLs, so it never noticed the missing link. Browser checks should follow the links a user would click.
+
+### 21. Mermaid diagram failed to render on GitHub
+
+I pasted GitHub's "Unable to render rich display" parse error for `docs/architecture.md`.
+
+**AI output:** in Mermaid a `;` ends a statement, so the import sequence diagram's message "Confirm disabled; fix the file and preview again" was split in two. It replaced the `;` with a comma, checked no other diagram contains one, and rendered both diagrams with `mermaid-cli` to confirm they parse.
