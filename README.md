@@ -2,6 +2,8 @@
 
 A web app for ACME's HR manager to keep salary records for **10,000 employees across 8 countries** accurate, and to answer "how do we pay people?" in a few clicks. It replaces an Excel workbook.
 
+**Live demo:** https://acme-salary-management-t0zm.onrender.com. It runs on Render's free plan: the first visit after 15 idle minutes takes about a minute to wake up, and the demo data resets to the 10,000 seeded employees on every restart (see [Deploying](#deploying)).
+
 - **Browse and search** employees (25 per page; filter by name, country, department, job title; active or inactive).
 - **Add, edit and delete** employees. Every rule is checked on the server. Deleting marks an employee inactive (with an exit date) and never loses data.
 - **Salary history**: each pay change keeps its effective date and an optional reason. The current salary is always the latest entry.
