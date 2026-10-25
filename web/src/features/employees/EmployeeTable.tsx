@@ -1,4 +1,5 @@
 import type { EmployeeSummary } from '@acme/contracts';
+import { Link } from 'react-router';
 import {
   Table,
   TableBody,
@@ -14,6 +15,20 @@ function TruncatedCell({ text }: { text: string }) {
   return (
     <TableCell className="max-w-[20ch] truncate px-3 py-2" title={text}>
       {text}
+    </TableCell>
+  );
+}
+
+/** The name opens the employee's page, which holds Edit, Change salary and Delete. */
+function NameCell({ employee }: { employee: EmployeeSummary }) {
+  return (
+    <TableCell className="max-w-[20ch] truncate px-3 py-2" title={employee.fullName}>
+      <Link
+        to={`/employees/${employee.id}`}
+        className="font-medium text-primary hover:underline focus-visible:underline"
+      >
+        {employee.fullName}
+      </Link>
     </TableCell>
   );
 }
@@ -41,7 +56,7 @@ export function EmployeeTable({ employees, showExitDate = false }: EmployeeTable
       <TableBody>
         {employees.map((employee) => (
           <TableRow key={employee.id}>
-            <TruncatedCell text={employee.fullName} />
+            <NameCell employee={employee} />
             <TruncatedCell text={employee.jobTitle} />
             <TruncatedCell text={employee.department} />
             <TableCell className="px-3 py-2">{countryName(employee.country)}</TableCell>
