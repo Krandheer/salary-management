@@ -103,6 +103,34 @@ describe('EmployeeListPage', () => {
     expect(within(johnRow).getByText('USD 85,000')).toBeInTheDocument();
   });
 
+  it("links each employee's name to their page, where they can be edited or deleted", async () => {
+    serveApi(() =>
+      aPage({ items: [anEmployee(), anEmployee({ id: 2, fullName: 'John Miller' })], total: 2 }),
+    );
+
+    renderWithProviders(<EmployeeListPage />);
+
+    expect(await screen.findByRole('link', { name: 'Asha Rao' })).toHaveAttribute(
+      'href',
+      '/employees/1',
+    );
+    expect(screen.getByRole('link', { name: 'John Miller' })).toHaveAttribute(
+      'href',
+      '/employees/2',
+    );
+  });
+
+  it("reaches an employee's page link with the keyboard", async () => {
+    serveApi(() => aPage());
+    const user = userEvent.setup();
+
+    renderWithProviders(<EmployeeListPage />);
+    const link = await screen.findByRole('link', { name: 'Asha Rao' });
+
+    await tabTo(user, link);
+    expect(link).toHaveFocus();
+  });
+
   it('shows the total number of employees', async () => {
     serveTwoPages();
 
